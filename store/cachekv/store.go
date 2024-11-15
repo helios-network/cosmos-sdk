@@ -161,6 +161,37 @@ func (store *Store) Write() {
 	}
 }
 
+// Copy creates a deep copy of the Store, including its cache and sortedCache.
+// The parent is not copied to avoid unexpected behaviors in other parts of the system.
+func (store *Store) Copy() types.CacheKVStore {
+	store.mtx.Lock()
+	defer store.mtx.Unlock()
+
+	// Create a new Store with the same parent
+	newStore := &Store{
+		cache:         make(map[string]*cValue, len(store.cache)),
+		unsortedCache: make(map[string]struct{}, len(store.unsortedCache)),
+		sortedCache:   store.sortedCache.Copy(), // Assuming sortedCache.Copy() provides a deep copy
+		parent:        store.parent,            // Keep the same parent reference
+	}
+
+	// Copy the cache
+	for key, value := range store.cache {
+		// Create a deep copy of cValue
+		newStore.cache[key] = &cValue{
+			value: append([]byte(nil), value.value...), // Deep copy of the byte slice
+			dirty: value.dirty,
+		}
+	}
+
+	// Copy the unsortedCache
+	for key := range store.unsortedCache {
+		newStore.unsortedCache[key] = struct{}{}
+	}
+
+	return newStore
+}
+
 // CacheWrap implements CacheWrapper.
 func (store *Store) CacheWrap() types.CacheWrap {
 	return NewStore(store)

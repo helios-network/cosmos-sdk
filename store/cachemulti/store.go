@@ -127,6 +127,10 @@ func (cms Store) Write() {
 	}
 }
 
+func (cms Store) Copy() types.CacheKVStore {
+	return cms.db.Copy()
+}
+
 // Implements CacheWrapper.
 func (cms Store) CacheWrap() types.CacheWrap {
 	return cms.CacheMultiStore().(types.CacheWrap)
