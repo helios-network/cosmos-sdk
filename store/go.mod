@@ -1,4 +1,4 @@
-module cosmossdk.io/store
+module github.com/Helios-Chain-Labs/cosmos-sdk/store
 
 go 1.21
 
