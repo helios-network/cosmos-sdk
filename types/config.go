@@ -40,6 +40,7 @@ func NewConfig() *Config {
 		sealedch: make(chan struct{}),
 		bech32AddressPrefix: map[string]string{
 			"account_addr":   Bech32PrefixAccAddr,
+			
 			"validator_addr": Bech32PrefixValAddr,
 			"consensus_addr": Bech32PrefixConsAddr,
 			"account_pub":    Bech32PrefixAccPub,
