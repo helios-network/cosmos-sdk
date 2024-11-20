@@ -1,6 +1,13 @@
 VERSION=${VERSION:-"v0.50.10-helios-2"}
 
 echo "Deploy Store"
+git tag math/$VERSION
+git push origin math/$VERSION
+cd ./math
+GOPROXY=proxy.golang.org go list -m github.com/Helios-Chain-Labs/cosmos-sdk/math@$VERSION
+cd ..
+
+echo "Deploy Store"
 git tag store/$VERSION
 git push origin store/$VERSION
 cd ./store
