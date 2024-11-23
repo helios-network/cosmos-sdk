@@ -36,12 +36,14 @@ const (
 	BackendPass    = "pass"
 	BackendTest    = "test"
 	BackendMemory  = "memory"
+	BackendLocal   = "local"
 )
 
 const (
-	keyringFileDirName = "keyring-file"
-	keyringTestDirName = "keyring-test"
-	passKeyringPrefix  = "keyring-%s"
+	keyringFileDirName  = "keyring-file"
+	keyringTestDirName  = "keyring-test"
+	keyringLocalDirName = "keyring-local"
+	passKeyringPrefix   = "keyring-%s"
 
 	// temporary pass phrase for exporting a key during a key rename
 	passPhrase = "temp"
@@ -189,6 +191,8 @@ func New(
 	switch backend {
 	case BackendMemory:
 		return NewInMemory(cdc, opts...), err
+	case BackendLocal:
+		db, err = keyring.Open(newLocalBackendKeyringConfig(appName, rootDir))
 	case BackendTest:
 		db, err = keyring.Open(newTestBackendKeyringConfig(appName, rootDir))
 	case BackendFile:
@@ -699,6 +703,17 @@ func newTestBackendKeyringConfig(appName, dir string) keyring.Config {
 		FileDir:         filepath.Join(dir, keyringTestDirName),
 		FilePasswordFunc: func(_ string) (string, error) {
 			return "test", nil
+		},
+	}
+}
+
+func newLocalBackendKeyringConfig(appName, dir string) keyring.Config {
+	return keyring.Config{
+		AllowedBackends: []keyring.BackendType{keyring.FileBackend},
+		ServiceName:     appName,
+		FileDir:         filepath.Join(dir, keyringLocalDirName),
+		FilePasswordFunc: func(_ string) (string, error) {
+			return "local", nil
 		},
 	}
 }

@@ -111,10 +111,16 @@ func runAddCmdPrepare(cmd *cobra.Command, args []string) error {
 
 /*
 input
+
   - bip39 mnemonic
+
   - bip39 passphrase
+
   - bip44 path
+
   - local encryption password
+
+    Warning!!! This function is overrided in Helios-Core Project in helios-chain/client/keys/add.go
 
 output
   - armor encrypted private key (saved to file)
