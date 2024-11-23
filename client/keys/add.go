@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -21,22 +21,21 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/multisig"
-	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
 const (
-	flagInteractive  = "interactive"
-	flagRecover      = "recover"
-	flagNoBackup     = "no-backup"
-	flagCoinType     = "coin-type"
-	flagAccount      = "account"
-	flagIndex        = "index"
-	flagMultisig     = "multisig"
-	flagNoSort       = "nosort"
-	flagHDPath       = "hd-path"
-	flagPubKeyBase64 = "pubkey-base64"
+	flagInteractive    = "interactive"
+	flagRecover        = "recover"
+	flagNoBackup       = "no-backup"
+	flagCoinType       = "coin-type"
+	flagAccount        = "account"
+	flagIndex          = "index"
+	flagMultisig       = "multisig"
+	flagNoSort         = "nosort"
+	flagHDPath         = "hd-path"
+	flagPubKeyBase64   = "pubkey-base64"
 	flagFromPrivateKey = "from-private-key"
 
 	// DefaultKeyPass contains the default key password for genesis transactions
@@ -199,6 +198,7 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 	pubKey, _ := cmd.Flags().GetString(FlagPublicKey)
 	pubKeyBase64, _ := cmd.Flags().GetString(flagPubKeyBase64)
 	fromPrivateKey, _ := cmd.Flags().GetString(flagFromPrivateKey)
+	recoverFlag, _ := cmd.Flags().GetBool(flagRecover)
 
 	if pubKey != "" && pubKeyBase64 != "" {
 		return fmt.Errorf(`flags %s and %s cannot be used simultaneously`, FlagPublicKey, flagPubKeyBase64)
@@ -214,11 +214,8 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 			return fmt.Errorf("invalid private key format: %v", err)
 		}
 
-		// Construction de la clé privée à partir des octets décodés
-		privKey := secp256k1.PrivKey{Key: pkBytes}
-
 		// Génération de l'enregistrement dans le keyring
-		k, err := kb.NewAccountFromPrivateKey(name, privKey)
+		k, err := kb.NewAccountFromPrivateKey(name, pkBytes, algo)
 		if err != nil {
 			return fmt.Errorf("could not save key: %v", err)
 		}
@@ -299,7 +296,6 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 	// Get bip39 mnemonic
 	var mnemonic, bip39Passphrase string
 
-	recoverFlag, _ := cmd.Flags().GetBool(flagRecover)
 	if recoverFlag {
 		mnemonic, err = input.GetString("Enter your bip39 mnemonic", inBuf)
 		if err != nil {

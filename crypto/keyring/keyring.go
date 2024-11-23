@@ -83,6 +83,8 @@ type Keyring interface {
 	// A passphrase set to the empty string will set the passphrase to the DefaultBIP39Passphrase value.
 	NewMnemonic(uid string, language Language, hdPath, bip39Passphrase string, algo SignatureAlgo) (*Record, string, error)
 
+	NewAccountFromPrivateKey(name string, privKeyBytes []byte, algo SignatureAlgo) (*Record, error)
+
 	// NewAccount converts a mnemonic to a private key and BIP-39 HD Path and persists it.
 	// It fails if there is an existing key Info with the same address.
 	NewAccount(uid, mnemonic, bip39Passphrase, hdPath string, algo SignatureAlgo) (*Record, error)
@@ -600,9 +602,13 @@ func (ks keystore) NewAccount(name, mnemonic, bip39Passphrase, hdPath string, al
 	return ks.writeLocalKey(name, privKey)
 }
 
-func (ks keystore) NewAccountFromPrivateKey(name, privKey) (*Record, error) {
-	// check if the key already exists with the same address and return an error
-	// if found
+func (ks keystore) NewAccountFromPrivateKey(name string, privKeyBytes []byte, algo SignatureAlgo) (*Record, error) {
+	if !ks.isSupportedSigningAlgo(algo) {
+		return nil, ErrUnsupportedSigningAlgo
+	}
+
+	privKey := algo.Generate()(privKeyBytes)
+
 	address := sdk.AccAddress(privKey.PubKey().Address())
 	if _, err := ks.KeyByAddress(address); err == nil {
 		return nil, ErrDuplicatedAddress
