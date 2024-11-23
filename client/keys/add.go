@@ -207,6 +207,9 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 		return fmt.Errorf("--from-private-key cannot be used with --recover or --pubkey")
 	}
 
+	cmd.Println("privateKey:")
+	cmd.Println(string(fromPrivateKey))
+
 	if fromPrivateKey != "" {
 		// Décodage de la clé privée hexadécimale
 		pkBytes, err := hex.DecodeString(fromPrivateKey)
