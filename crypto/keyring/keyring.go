@@ -600,6 +600,17 @@ func (ks keystore) NewAccount(name, mnemonic, bip39Passphrase, hdPath string, al
 	return ks.writeLocalKey(name, privKey)
 }
 
+func (ks keystore) NewAccountFromPrivateKey(name, privKey) (*Record, error) {
+	// check if the key already exists with the same address and return an error
+	// if found
+	address := sdk.AccAddress(privKey.PubKey().Address())
+	if _, err := ks.KeyByAddress(address); err == nil {
+		return nil, ErrDuplicatedAddress
+	}
+
+	return ks.writeLocalKey(name, privKey)
+}
+
 func (ks keystore) isSupportedSigningAlgo(algo SignatureAlgo) bool {
 	return ks.options.SupportedAlgos.Contains(algo)
 }

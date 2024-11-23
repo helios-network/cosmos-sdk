@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
@@ -20,6 +21,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/multisig"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -35,6 +37,7 @@ const (
 	flagNoSort       = "nosort"
 	flagHDPath       = "hd-path"
 	flagPubKeyBase64 = "pubkey-base64"
+	flagFromPrivateKey = "from-private-key"
 
 	// DefaultKeyPass contains the default key password for genesis transactions
 	DefaultKeyPass = "12345678"
@@ -83,6 +86,7 @@ Example:
 	f.Uint32(flagAccount, 0, "Account number for HD derivation (less than equal 2147483647)")
 	f.Uint32(flagIndex, 0, "Address index number for HD derivation (less than equal 2147483647)")
 	f.String(flags.FlagKeyType, string(hd.Secp256k1Type), "Key signing algorithm to generate keys for")
+	f.String(flagFromPrivateKey, "", "Add a key directly from a private key (hex-encoded)")
 
 	// support old flags name for backwards compatibility
 	f.SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
@@ -194,9 +198,35 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 
 	pubKey, _ := cmd.Flags().GetString(FlagPublicKey)
 	pubKeyBase64, _ := cmd.Flags().GetString(flagPubKeyBase64)
+	fromPrivateKey, _ := cmd.Flags().GetString(flagFromPrivateKey)
+
 	if pubKey != "" && pubKeyBase64 != "" {
 		return fmt.Errorf(`flags %s and %s cannot be used simultaneously`, FlagPublicKey, flagPubKeyBase64)
 	}
+	if fromPrivateKey != "" && (recoverFlag || pubKey != "") {
+		return fmt.Errorf("--from-private-key cannot be used with --recover or --pubkey")
+	}
+
+	if fromPrivateKey != "" {
+		// Décodage de la clé privée hexadécimale
+		pkBytes, err := hex.DecodeString(fromPrivateKey)
+		if err != nil {
+			return fmt.Errorf("invalid private key format: %v", err)
+		}
+
+		// Construction de la clé privée à partir des octets décodés
+		privKey := secp256k1.PrivKey{Key: pkBytes}
+
+		// Génération de l'enregistrement dans le keyring
+		k, err := kb.NewAccountFromPrivateKey(name, privKey)
+		if err != nil {
+			return fmt.Errorf("could not save key: %v", err)
+		}
+
+		// Impression des informations sur la clé
+		return printCreate(cmd, k, false, "", outputFormat)
+	}
+
 	if pubKey != "" {
 		var pk cryptotypes.PubKey
 		if err = ctx.Codec.UnmarshalInterfaceJSON([]byte(pubKey), &pk); err != nil {
