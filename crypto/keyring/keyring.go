@@ -713,7 +713,7 @@ func newLocalBackendKeyringConfig(appName, dir string) keyring.Config {
 		ServiceName:     appName,
 		FileDir:         filepath.Join(dir, keyringLocalDirName),
 		FilePasswordFunc: func(_ string) (string, error) {
-			return "local", nil
+			return "test", nil
 		},
 	}
 }

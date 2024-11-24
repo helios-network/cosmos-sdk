@@ -212,10 +212,10 @@ require (
 
 // Below are the long-lived replace of the Cosmos SDK
 replace (
-	cosmossdk.io/store => github.com/Helios-Chain-Labs/cosmos-sdk/store v0.50.10-helios-17
-	cosmossdk.io/x/evidence => github.com/Helios-Chain-Labs/cosmos-sdk/x/evidence v0.50.10-helios-17
-	cosmossdk.io/x/feegrant => github.com/Helios-Chain-Labs/cosmos-sdk/x/feegrant v0.50.10-helios-17
-	cosmossdk.io/x/upgrade => github.com/Helios-Chain-Labs/cosmos-sdk/x/upgrade v0.50.10-helios-17
+	cosmossdk.io/store => github.com/Helios-Chain-Labs/cosmos-sdk/store v0.50.10-helios-18
+	cosmossdk.io/x/evidence => github.com/Helios-Chain-Labs/cosmos-sdk/x/evidence v0.50.10-helios-18
+	cosmossdk.io/x/feegrant => github.com/Helios-Chain-Labs/cosmos-sdk/x/feegrant v0.50.10-helios-18
+	cosmossdk.io/x/upgrade => github.com/Helios-Chain-Labs/cosmos-sdk/x/upgrade v0.50.10-helios-18
 
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
