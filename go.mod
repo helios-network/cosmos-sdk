@@ -28,6 +28,7 @@ require (
 	github.com/cosmos/gogoproto v1.4.12
 	github.com/cosmos/ledger-cosmos-go v0.13.3
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0
+	github.com/ethereum/go-ethereum v1.11.5
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.4
 	github.com/google/go-cmp v0.6.0
@@ -212,10 +213,10 @@ require (
 
 // Below are the long-lived replace of the Cosmos SDK
 replace (
-	cosmossdk.io/store => github.com/Helios-Chain-Labs/cosmos-sdk/store v0.50.10-helios-18
-	cosmossdk.io/x/evidence => github.com/Helios-Chain-Labs/cosmos-sdk/x/evidence v0.50.10-helios-18
-	cosmossdk.io/x/feegrant => github.com/Helios-Chain-Labs/cosmos-sdk/x/feegrant v0.50.10-helios-18
-	cosmossdk.io/x/upgrade => github.com/Helios-Chain-Labs/cosmos-sdk/x/upgrade v0.50.10-helios-18
+	cosmossdk.io/store => github.com/Helios-Chain-Labs/cosmos-sdk/store v0.50.10-helios-19
+	cosmossdk.io/x/evidence => github.com/Helios-Chain-Labs/cosmos-sdk/x/evidence v0.50.10-helios-19
+	cosmossdk.io/x/feegrant => github.com/Helios-Chain-Labs/cosmos-sdk/x/feegrant v0.50.10-helios-19
+	cosmossdk.io/x/upgrade => github.com/Helios-Chain-Labs/cosmos-sdk/x/upgrade v0.50.10-helios-19
 
 	// use cosmos fork of keyring
 	github.com/99designs/keyring => github.com/cosmos/keyring v1.2.0
@@ -224,6 +225,8 @@ replace (
 	// dgrijalva/jwt-go is deprecated and doesn't receive security updates.
 	// TODO: remove it: https://github.com/cosmos/cosmos-sdk/issues/13134
 	github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt/v4 v4.4.2
+
+	github.com/ethereum/go-ethereum => github.com/evmos/go-ethereum v1.10.26-evmos-rc4
 	// Fix upstream GHSA-h395-qcrw-5vmq and GHSA-3vp4-m3rf-835h vulnerabilities.
 	// TODO Remove it: https://github.com/cosmos/cosmos-sdk/issues/10409
 	github.com/gin-gonic/gin => github.com/gin-gonic/gin v1.9.1
