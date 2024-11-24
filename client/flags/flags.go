@@ -151,7 +151,7 @@ func AddTxFlagsToCmd(cmd *cobra.Command) {
 // AddKeyringFlags sets common keyring flags
 func AddKeyringFlags(flags *pflag.FlagSet) {
 	flags.String(FlagKeyringDir, "", "The client Keyring directory; if omitted, the default 'home' directory will be used")
-	flags.String(FlagKeyringBackend, DefaultKeyringBackend, "Select keyring's backend (os|file|kwallet|pass|test|memory)")
+	flags.String(FlagKeyringBackend, DefaultKeyringBackend, "Select keyring's backend (os|file|kwallet|pass|test|memory|local)")
 }
 
 // AddPaginationFlagsToCmd adds common pagination flags to cmd
