@@ -46,6 +46,7 @@ The pass backend requires GnuPG: https://gnupg.org/
 		ListKeyTypesCmd(),
 		ShowKeysCmd(),
 		DeleteKeyCommand(),
+		ClearKeyCommand(),
 		RenameKeyCommand(),
 		ParseKeyStringCommand(),
 		MigrateCommand(),
