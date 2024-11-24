@@ -37,6 +37,7 @@ const (
 	flagHDPath         = "hd-path"
 	flagPubKeyBase64   = "pubkey-base64"
 	flagFromPrivateKey = "from-private-key"
+	flagFromMnemonic   = "from-mnemonic"
 
 	// DefaultKeyPass contains the default key password for genesis transactions
 	DefaultKeyPass = "12345678"
@@ -86,6 +87,7 @@ Example:
 	f.Uint32(flagIndex, 0, "Address index number for HD derivation (less than equal 2147483647)")
 	f.String(flags.FlagKeyType, string(hd.Secp256k1Type), "Key signing algorithm to generate keys for")
 	f.String(flagFromPrivateKey, "", "Add a key directly from a private key (hex-encoded)")
+	f.String(flagFromMnemonic, "", "Add a key directly from a mnemomic phrase")
 
 	// support old flags name for backwards compatibility
 	f.SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
@@ -205,6 +207,7 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 	pubKeyBase64, _ := cmd.Flags().GetString(flagPubKeyBase64)
 	fromPrivateKey, _ := cmd.Flags().GetString(flagFromPrivateKey)
 	recoverFlag, _ := cmd.Flags().GetBool(flagRecover)
+	fromMnemonic, _ := cmd.Flags().GetString(flagFromMnemonic)
 
 	if pubKey != "" && pubKeyBase64 != "" {
 		return fmt.Errorf(`flags %s and %s cannot be used simultaneously`, FlagPublicKey, flagPubKeyBase64)
@@ -284,6 +287,19 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 	index, _ := cmd.Flags().GetUint32(flagIndex)
 	hdPath, _ := cmd.Flags().GetString(flagHDPath)
 	useLedger, _ := cmd.Flags().GetBool(flags.FlagUseLedger)
+
+	if fromMnemonic != "" { // from mnemonic flag
+		if !bip39.IsMnemonicValid(fromMnemonic) {
+			return errors.New("invalid mnemonic")
+		}
+
+		k, err := kb.NewAccount(name, fromMnemonic, "", hdPath, algo)
+		if err != nil {
+			return err
+		}
+
+		return printCreate(cmd, k, showMnemonic, fromMnemonic, outputFormat)
+	}
 
 	if len(hdPath) == 0 {
 		hdPath = hd.CreateHDPath(coinType, account, index).String()
