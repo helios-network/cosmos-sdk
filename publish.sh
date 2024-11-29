@@ -1,4 +1,4 @@
-VERSION=${VERSION:-"v0.50.10-helios-20"}
+VERSION=${VERSION:-"v0.50.10-helios-21"}
 
 echo "Deploy Store"
 git tag math/$VERSION
@@ -56,11 +56,19 @@ cd ./x/upgrade
 GOPROXY=proxy.golang.org go list -m github.com/Helios-Chain-Labs/cosmos-sdk/x/upgrade@$VERSION
 cd ../..
 
+echo "Deploy x/gov"
+git tag x/gov/$VERSION
+git push origin x/gov/$VERSION
+cd ./x/gov
+GOPROXY=proxy.golang.org go list -m github.com/Helios-Chain-Labs/cosmos-sdk/x/gov@$VERSION
+cd ../..
+
 echo "Update cosmos-sdk go.mod with the new dependencies"
 go mod edit -replace cosmossdk.io/store=github.com/Helios-Chain-Labs/cosmos-sdk/store@$VERSION
 go mod edit -replace cosmossdk.io/x/evidence=github.com/Helios-Chain-Labs/cosmos-sdk/x/evidence@$VERSION
 go mod edit -replace cosmossdk.io/x/feegrant=github.com/Helios-Chain-Labs/cosmos-sdk/x/feegrant@$VERSION
 go mod edit -replace cosmossdk.io/x/upgrade=github.com/Helios-Chain-Labs/cosmos-sdk/x/upgrade@$VERSION
+go mod edit -replace cosmossdk.io/x/gov=github.com/Helios-Chain-Labs/cosmos-sdk/x/gov@$VERSION
 go mod tidy
 
 echo "Deploy cosmos-sdk"
