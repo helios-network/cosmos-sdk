@@ -158,7 +158,7 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			// Messages may mutate state thus we use a cached context. If one of
 			// the handlers fails, no state mutation is written and the error
 			// message is logged.
-			execCtx := ctx.WithValue(baseapp.DoNotFailFastSendContextKey, nil) // enable fail fast during msg handling
+			execCtx := ctx.WithValue("DoNotFailFast", nil) // enable fail fast during msg handling
 			cacheCtx, writeCache := execCtx.CacheContext()
 			messages, err := proposal.GetMsgs()
 			if err != nil {
