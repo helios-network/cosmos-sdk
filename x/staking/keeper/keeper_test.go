@@ -63,6 +63,7 @@ func (s *KeeperTestSuite) SetupTest() {
 		storeService,
 		accountKeeper,
 		bankKeeper,
+		nil,
 		authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 		address.NewBech32Codec("cosmosvaloper"),
 		address.NewBech32Codec("cosmosvalcons"),

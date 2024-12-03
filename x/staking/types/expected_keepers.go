@@ -41,6 +41,16 @@ type BankKeeper interface {
 	BurnCoins(ctx context.Context, name string, amt sdk.Coins) error
 }
 
+// Erc20Asset defines the properties of an ERC20 asset without directly importing Helios types.
+type Erc20Asset interface {
+	GetDenom() string
+	GetContractAddress() string
+}
+
+type Erc20Keeper interface {
+	GetAllStakingAssets(ctx sdk.Context) []Erc20Asset
+}
+
 // ValidatorSet expected properties for the set of all validators (noalias)
 type ValidatorSet interface {
 	// iterate through validators by operator address, execute func for each validator
