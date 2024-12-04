@@ -956,6 +956,7 @@ func (k Keeper) Delegate(
 	}
 
 	// Update delegation
+
 	delegation.Shares = delegation.Shares.Add(newShares)
 	if err = k.SetDelegation(ctx, delegation); err != nil {
 		return newShares, err
@@ -1094,6 +1095,25 @@ func (k Keeper) getBeginInfo(
 	default:
 		panic(fmt.Sprintf("unknown validator status: %s", validator.Status))
 	}
+}
+
+func (k Keeper) ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math.Int) (sdk.Coin, error) {
+	// Get all staking assets
+	stakingAssets := k.erc20Keeper.GetAllStakingAssets(ctx)
+
+	// Find the matching asset
+	for _, asset := range stakingAssets {
+		if asset.GetDenom() == denom {
+			// Apply weight conversion
+			weight := math.NewIntFromUint64(asset.GetBaseWeight())
+			weightedAmount := amount.Mul(weight).Quo(math.NewInt(100))
+
+			// Return Cosmos SDK coin
+			return sdk.NewCoin(denom, weightedAmount), nil
+		}
+	}
+
+	return sdk.Coin{}, fmt.Errorf("denom %s not found in staking assets", denom)
 }
 
 // Undelegate unbonds an amount of delegator shares from a given validator. It

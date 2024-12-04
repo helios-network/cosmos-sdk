@@ -45,6 +45,7 @@ type BankKeeper interface {
 type Erc20Asset interface {
 	GetDenom() string
 	GetContractAddress() string
+	GetBaseWeight() uint64
 }
 
 type Erc20Keeper interface {
