@@ -859,10 +859,14 @@ func (k Keeper) DequeueAllMatureRedelegationQueue(ctx context.Context, currTime 
 }
 
 // Delegate performs a delegation, set/update everything necessary within the store.
-// tokenSrc indicates the bond status of the incoming funds.
 func (k Keeper) Delegate(
-	ctx context.Context, delAddr sdk.AccAddress, bondAmt math.Int, tokenSrc types.BondStatus,
-	validator types.Validator, subtractAccount bool,
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	bondAmt math.Int,
+	bondDenom string,
+	tokenSrc types.BondStatus,
+	validator types.Validator,
+	subtractAccount bool,
 ) (newShares math.LegacyDec, err error) {
 	// In some situations, the exchange rate becomes invalid, e.g. if
 	// Validator loses all tokens due to slashing. In this case,
@@ -871,94 +875,43 @@ func (k Keeper) Delegate(
 		return math.LegacyZeroDec(), types.ErrDelegatorShareExRateInvalid
 	}
 
+	// Convert validator address
 	valbz, err := k.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
 	if err != nil {
 		return math.LegacyZeroDec(), err
 	}
 
-	// Get or create the delegation object and call the appropriate hook if present
-	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
-	if err == nil {
-		// found
-		err = k.Hooks().BeforeDelegationSharesModified(ctx, delAddr, valbz)
-	} else if errors.Is(err, types.ErrNoDelegation) {
-		// not found
-		delAddrStr, err1 := k.authKeeper.AddressCodec().BytesToString(delAddr)
-		if err1 != nil {
-			return math.LegacyDec{}, err1
-		}
-
-		delegation = types.NewDelegation(delAddrStr, validator.GetOperator(), math.LegacyZeroDec())
-		err = k.Hooks().BeforeDelegationCreated(ctx, delAddr, valbz)
-	} else {
-		return math.LegacyZeroDec(), err
-	}
-
+	// Retrieve or create delegation
+	delegation, err := k.prepareDelegation(ctx, delAddr, valbz, validator)
 	if err != nil {
 		return math.LegacyZeroDec(), err
 	}
 
-	// if subtractAccount is true then we are
-	// performing a delegation and not a redelegation, thus the source tokens are
-	// all non bonded
-	if subtractAccount {
-		if tokenSrc == types.Bonded {
-			panic("delegation token source cannot be bonded")
-		}
-
-		var sendName string
-
-		switch {
-		case validator.IsBonded():
-			sendName = types.BondedPoolName
-		case validator.IsUnbonding(), validator.IsUnbonded():
-			sendName = types.NotBondedPoolName
-		default:
-			panic("invalid validator status")
-		}
-
-		bondDenom, err := k.BondDenom(ctx)
-		if err != nil {
-			return math.LegacyDec{}, err
-		}
-
-		coins := sdk.NewCoins(sdk.NewCoin(bondDenom, bondAmt))
-		if err := k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins); err != nil {
-			return math.LegacyDec{}, err
-		}
-	} else {
-		// potentially transfer tokens between pools, if
-		switch {
-		case tokenSrc == types.Bonded && validator.IsBonded():
-			// do nothing
-		case (tokenSrc == types.Unbonded || tokenSrc == types.Unbonding) && !validator.IsBonded():
-			// do nothing
-		case (tokenSrc == types.Unbonded || tokenSrc == types.Unbonding) && validator.IsBonded():
-			// transfer pools
-			err = k.notBondedTokensToBonded(ctx, bondAmt)
-			if err != nil {
-				return math.LegacyDec{}, err
-			}
-		case tokenSrc == types.Bonded && !validator.IsBonded():
-			// transfer pools
-			err = k.bondedTokensToNotBonded(ctx, bondAmt)
-			if err != nil {
-				return math.LegacyDec{}, err
-			}
-		default:
-			panic("unknown token source bond status")
-		}
+	// Convert asset with proper error handling
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	asset, err := k.ConvertAssetToSDKCoin(sdkCtx, bondDenom, bondAmt)
+	if err != nil {
+		return math.LegacyZeroDec(), fmt.Errorf("asset %s not found: %w", bondDenom, err)
 	}
 
-	_, newShares, err = k.AddValidatorTokensAndShares(ctx, validator, bondAmt)
+	// Perform EVM contract availability check
+	if err := k.checkEVMTokenAvailability(ctx, bondDenom, bondAmt); err != nil {
+		return math.LegacyZeroDec(), err
+	}
+
+	// Handle token source and pool transfers
+	if err := k.handleTokenSourceTransfer(ctx, delAddr, asset, tokenSrc, validator, subtractAccount); err != nil {
+		return math.LegacyZeroDec(), err
+	}
+
+	// Add validator tokens and shares
+	_, newShares, err = k.AddValidatorTokensAndShares(ctx, validator, asset.Amount)
 	if err != nil {
 		return newShares, err
 	}
 
-	// Update delegation
-
-	delegation.Shares = delegation.Shares.Add(newShares)
-	if err = k.SetDelegation(ctx, delegation); err != nil {
+	// Update delegation with asset weights
+	if err := k.updateDelegationDetails(ctx, &delegation, asset, bondAmt, newShares); err != nil {
 		return newShares, err
 	}
 
@@ -968,6 +921,117 @@ func (k Keeper) Delegate(
 	}
 
 	return newShares, nil
+}
+
+// prepareDelegation retrieves or creates a delegation
+func (k Keeper) prepareDelegation(
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	valbz []byte,
+	validator types.Validator,
+) (types.Delegation, error) {
+	// Get or create the delegation object and call the appropriate hook if present
+	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	if err == nil {
+		// found
+		err = k.Hooks().BeforeDelegationSharesModified(ctx, delAddr, valbz)
+	} else if errors.Is(err, types.ErrNoDelegation) {
+		// not found
+		delAddrStr, err1 := k.authKeeper.AddressCodec().BytesToString(delAddr)
+		if err1 != nil {
+			return types.Delegation{}, err1
+		}
+
+		delegation = types.NewDelegation(delAddrStr, validator.GetOperator(), math.LegacyZeroDec())
+		err = k.Hooks().BeforeDelegationCreated(ctx, delAddr, valbz)
+	} else {
+		return types.Delegation{}, err
+	}
+
+	if err != nil {
+		return types.Delegation{}, err
+	}
+
+	return delegation, nil
+}
+
+// checkEVMTokenAvailability is a placeholder for EVM token availability check
+func (k Keeper) checkEVMTokenAvailability(_ context.Context, _ string, _ math.Int) error {
+	// TODO: Implement actual EVM Extension contract token availability check
+	return nil
+}
+
+// handleTokenSourceTransfer manages token transfers based on source and validator status
+func (k Keeper) handleTokenSourceTransfer(
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	asset sdk.Coin,
+	tokenSrc types.BondStatus,
+	validator types.Validator,
+	subtractAccount bool,
+) error {
+	// If subtractAccount is true, we are performing a delegation and not a redelegation
+	if subtractAccount {
+		if tokenSrc == types.Bonded {
+			return fmt.Errorf("delegation token source cannot be bonded")
+		}
+
+		var sendName string
+		switch {
+		case validator.IsBonded():
+			sendName = types.BondedPoolName
+		case validator.IsUnbonding(), validator.IsUnbonded():
+			sendName = types.NotBondedPoolName
+		default:
+			return fmt.Errorf("invalid validator status")
+		}
+
+		bondDenom, err := k.BondDenom(ctx)
+		if err != nil {
+			return err
+		}
+
+		coins := sdk.NewCoins(sdk.NewCoin(bondDenom, asset.Amount))
+		return k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins)
+	}
+
+	// Handle token transfers between pools for redelegation
+	switch {
+	case tokenSrc == types.Bonded && validator.IsBonded():
+		// do nothing
+		return nil
+	case (tokenSrc == types.Unbonded || tokenSrc == types.Unbonding) && !validator.IsBonded():
+		// do nothing
+		return nil
+	case (tokenSrc == types.Unbonded || tokenSrc == types.Unbonding) && validator.IsBonded():
+		// transfer from unbonded to bonded pool
+		return k.notBondedTokensToBonded(ctx, asset.Amount)
+	case tokenSrc == types.Bonded && !validator.IsBonded():
+		// transfer from bonded to unbonded pool
+		return k.bondedTokensToNotBonded(ctx, asset.Amount)
+	default:
+		return fmt.Errorf("unknown token source bond status")
+	}
+}
+
+// updateDelegationDetails updates delegation with asset weights and shares
+func (k Keeper) updateDelegationDetails(
+	ctx context.Context,
+	delegation *types.Delegation,
+	asset sdk.Coin,
+	bondAmt math.Int,
+	newShares math.LegacyDec,
+) error {
+	// Add or update asset weights
+	if err := k.AddOrUpdateAssetWeight(delegation, asset, bondAmt); err != nil {
+		return err
+	}
+
+	// Update delegation shares
+	delegation.Shares = delegation.Shares.Add(newShares)
+
+	// Set delegation with error handling
+	return k.SetDelegation(ctx, *delegation)
 }
 
 // Unbond unbonds a particular delegation and perform associated store operations.
@@ -1097,32 +1161,17 @@ func (k Keeper) getBeginInfo(
 	}
 }
 
-func (k Keeper) ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math.Int) (sdk.Coin, error) {
-	// Get all staking assets
-	stakingAssets := k.erc20Keeper.GetAllStakingAssets(ctx)
-
-	// Find the matching asset
-	for _, asset := range stakingAssets {
-		if asset.GetDenom() == denom {
-			// Apply weight conversion
-			weight := math.NewIntFromUint64(asset.GetBaseWeight())
-			weightedAmount := amount.Mul(weight).Quo(math.NewInt(100))
-
-			// Return Cosmos SDK coin
-			return sdk.NewCoin(denom, weightedAmount), nil
-		}
-	}
-
-	return sdk.Coin{}, fmt.Errorf("denom %s not found in staking assets", denom)
-}
-
 // Undelegate unbonds an amount of delegator shares from a given validator. It
 // will verify that the unbonding entries between the delegator and validator
 // are not exceeded and unbond the staked tokens (based on shares) by creating
 // an unbonding object and inserting it into the unbonding queue which will be
 // processed during the staking EndBlocker.
 func (k Keeper) Undelegate(
-	ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress, sharesAmount math.LegacyDec,
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	valAddr sdk.ValAddress,
+	sharesAmount math.LegacyDec,
+	sharesDenom string,
 ) (time.Time, math.Int, error) {
 	validator, err := k.GetValidator(ctx, valAddr)
 	if err != nil {
@@ -1135,7 +1184,7 @@ func (k Keeper) Undelegate(
 	}
 
 	if hasMaxEntries {
-		return time.Time{}, math.Int{}, types.ErrMaxUnbondingDelegationEntries
+		return time.Time{}, math.Int{}, err
 	}
 
 	returnAmount, err := k.Unbond(ctx, delAddr, valAddr, sharesAmount)
@@ -1143,7 +1192,28 @@ func (k Keeper) Undelegate(
 		return time.Time{}, math.Int{}, err
 	}
 
-	// transfer the validator tokens to the not bonded pool
+	// Get delegation to update asset weights
+	valbz, err := k.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
+	if err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	if err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+
+	// Update asset weight for the specific denom
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	if err := k.UpdateOrRemoveAssetWeight(&delegation, sharesDenom, returnAmount, sdkCtx); err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+
+	// Save the updated delegation
+	if err := k.SetDelegation(ctx, delegation); err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+
+	// Rest of the function remains the same...
 	if validator.IsBonded() {
 		err = k.bondedTokensToNotBonded(ctx, returnAmount)
 		if err != nil {
@@ -1156,7 +1226,6 @@ func (k Keeper) Undelegate(
 		return time.Time{}, math.Int{}, err
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	completionTime := sdkCtx.BlockHeader().Time.Add(unbondingTime)
 	ubd, err := k.SetUnbondingDelegationEntry(ctx, delAddr, valAddr, sdkCtx.BlockHeight(), completionTime, returnAmount)
 	if err != nil {
@@ -1235,7 +1304,7 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 // BeginRedelegation begins unbonding / redelegation and creates a redelegation
 // record.
 func (k Keeper) BeginRedelegation(
-	ctx context.Context, delAddr sdk.AccAddress, valSrcAddr, valDstAddr sdk.ValAddress, sharesAmount math.LegacyDec,
+	ctx context.Context, delAddr sdk.AccAddress, valSrcAddr, valDstAddr sdk.ValAddress, sharesAmount math.LegacyDec, denom string,
 ) (completionTime time.Time, err error) {
 	if bytes.Equal(valSrcAddr, valDstAddr) {
 		return time.Time{}, types.ErrSelfRedelegation
@@ -1283,7 +1352,7 @@ func (k Keeper) BeginRedelegation(
 		return time.Time{}, types.ErrTinyRedelegationAmount
 	}
 
-	sharesCreated, err := k.Delegate(ctx, delAddr, returnAmount, srcValidator.GetStatus(), dstValidator, false)
+	sharesCreated, err := k.Delegate(ctx, delAddr, returnAmount, denom, srcValidator.GetStatus(), dstValidator, false)
 	if err != nil {
 		return time.Time{}, err
 	}
