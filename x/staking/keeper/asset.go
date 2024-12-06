@@ -76,7 +76,12 @@ func (k Keeper) ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math
 		}
 	}
 
-	return sdk.Coin{}, fmt.Errorf("denom %s not found in staking assets", denom)
+	baseDenom, err := sdk.GetBaseDenom()
+	if err == nil && denom == baseDenom { // we're receiving base ahelios from genesis or from an internal call
+		return sdk.NewCoin(denom, amount), nil
+	}
+
+	return sdk.Coin{}, fmt.Errorf("denom %s not found in staking assets: %s", denom, baseDenom)
 }
 
 func (k Keeper) UpdateOrRemoveAssetWeight(
