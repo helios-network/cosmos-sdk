@@ -280,6 +280,8 @@ message UnbondingDelegationEntry {
 
   // Strictly positive if this entry's unbonding has been stopped by external modules
   int64 unbonding_on_hold_ref_count = 6;
+  
+  string erc20_denom = 7; // Champ ajouté
 }
 
 // RedelegationEntry defines a redelegation object with relevant metadata.
