@@ -889,18 +889,14 @@ func (k Keeper) Delegate(
 
 	// Convert asset with proper error handling
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	// return baseDenom with the amount weigted
 	asset, err := k.ConvertAssetToSDKCoin(sdkCtx, bondDenom, bondAmt)
 	if err != nil {
 		return math.LegacyZeroDec(), fmt.Errorf("asset %s not found: %w", bondDenom, err)
 	}
 
-	// Perform EVM contract availability check
-	if err := k.checkEVMTokenAvailability(ctx, bondDenom, bondAmt); err != nil {
-		return math.LegacyZeroDec(), err
-	}
-
 	// Handle token source and pool transfers
-	if err := k.handleTokenSourceTransfer(ctx, delAddr, asset, tokenSrc, validator, subtractAccount); err != nil {
+	if err := k.handleTokenSourceTransfer(ctx, delAddr, asset, tokenSrc, validator, subtractAccount, sdk.NewCoin(bondDenom, bondAmt)); err != nil {
 		return math.LegacyZeroDec(), err
 	}
 
@@ -911,7 +907,7 @@ func (k Keeper) Delegate(
 	}
 
 	// Update delegation with asset weights
-	if err := k.updateDelegationDetails(ctx, &delegation, asset, bondAmt, newShares); err != nil {
+	if err := k.updateDelegationDetails(ctx, &delegation, asset, bondDenom, bondAmt, newShares); err != nil {
 		return newShares, err
 	}
 
@@ -955,12 +951,6 @@ func (k Keeper) prepareDelegation(
 	return delegation, nil
 }
 
-// checkEVMTokenAvailability is a placeholder for EVM token availability check
-func (k Keeper) checkEVMTokenAvailability(_ context.Context, _ string, _ math.Int) error {
-	// TODO: Implement actual EVM Extension contract token availability check
-	return nil
-}
-
 // handleTokenSourceTransfer manages token transfers based on source and validator status
 func (k Keeper) handleTokenSourceTransfer(
 	ctx context.Context,
@@ -969,6 +959,7 @@ func (k Keeper) handleTokenSourceTransfer(
 	tokenSrc types.BondStatus,
 	validator types.Validator,
 	subtractAccount bool,
+	burnCoin sdk.Coin,
 ) error {
 	// If subtractAccount is true, we are performing a delegation and not a redelegation
 	if subtractAccount {
@@ -986,13 +977,12 @@ func (k Keeper) handleTokenSourceTransfer(
 			return fmt.Errorf("invalid validator status")
 		}
 
-		bondDenom, err := k.BondDenom(ctx)
-		if err != nil {
-			return err
+		coins := sdk.NewCoins(sdk.NewCoin(asset.Denom, asset.Amount))
+		if burnCoin.Denom == asset.Denom {
+			return k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins)
+		} else {
+			return k.bankKeeper.DelegateErc20FromAccountToModule(ctx, delAddr, sendName, coins, burnCoin)
 		}
-
-		coins := sdk.NewCoins(sdk.NewCoin(bondDenom, asset.Amount))
-		return k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins)
 	}
 
 	// Handle token transfers between pools for redelegation
@@ -1019,11 +1009,12 @@ func (k Keeper) updateDelegationDetails(
 	ctx context.Context,
 	delegation *types.Delegation,
 	asset sdk.Coin,
+	bondDenom string,
 	bondAmt math.Int,
 	newShares math.LegacyDec,
 ) error {
 	// Add or update asset weights
-	if err := k.AddOrUpdateAssetWeight(delegation, asset, bondAmt); err != nil {
+	if err := k.AddOrUpdateAssetWeight(delegation, asset, bondDenom, bondAmt); err != nil {
 		return err
 	}
 
@@ -1253,7 +1244,6 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 	if err != nil {
 		return nil, err
 	}
-
 	balances := sdk.NewCoins()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	ctxTime := sdkCtx.BlockHeader().Time
@@ -1275,7 +1265,17 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 
 			// track undelegation only when remaining or truncated shares are non-zero
 			if !entry.Balance.IsZero() {
+				println("heeere 1", bondDenom)
+				println("heeere 2", entry.Balance.String())
+
+				delegator, err := k.GetDelegation(ctx, delAddr, valAddr)
+				if err != nill {
+					return nil, err
+				}
+				delegator.AssetWeights[erc20denom]
+
 				amt := sdk.NewCoin(bondDenom, entry.Balance)
+				// TODO : will undelegate the coin
 				if err := k.bankKeeper.UndelegateCoinsFromModuleToAccount(
 					ctx, types.NotBondedPoolName, delegatorAddress, sdk.NewCoins(amt),
 				); err != nil {
