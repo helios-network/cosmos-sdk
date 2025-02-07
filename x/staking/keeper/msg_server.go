@@ -411,7 +411,7 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 		return nil, err
 	}
 
-	completionTime, undelegatedAmt, err := k.Keeper.Undelegate(ctx, delegatorAddress, addr, shares, msg.Amount.Denom)
+	completionTime, undelegatedAmt, err := k.Keeper.Undelegate(ctx, delegatorAddress, addr, shares, msg.Amount.Denom, msg.Amount.Amount)
 	if err != nil {
 		return nil, err
 	}

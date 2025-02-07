@@ -66,7 +66,7 @@ func (d Delegations) String() (out string) {
 	return strings.TrimSpace(out)
 }
 
-func NewUnbondingDelegationEntry(creationHeight int64, completionTime time.Time, balance math.Int, unbondingID uint64) UnbondingDelegationEntry {
+func NewUnbondingDelegationEntry(creationHeight int64, completionTime time.Time, balance math.Int, unbondingID uint64, erc20Denom string, erc20Amount math.Int) UnbondingDelegationEntry {
 	return UnbondingDelegationEntry{
 		CreationHeight:          creationHeight,
 		CompletionTime:          completionTime,
@@ -74,6 +74,8 @@ func NewUnbondingDelegationEntry(creationHeight int64, completionTime time.Time,
 		Balance:                 balance,
 		UnbondingId:             unbondingID,
 		UnbondingOnHoldRefCount: 0,
+		Erc20Denom:              erc20Denom,
+		Erc20Amount:             erc20Amount,
 	}
 }
 
@@ -112,7 +114,7 @@ func UnmarshalUBDE(cdc codec.BinaryCodec, value []byte) (ubd UnbondingDelegation
 func NewUnbondingDelegation(
 	delegatorAddr sdk.AccAddress, validatorAddr sdk.ValAddress,
 	creationHeight int64, minTime time.Time, balance math.Int, id uint64,
-	valAc, delAc address.Codec,
+	valAc, delAc address.Codec, erc20Denom string, Erc20Amount math.Int,
 ) UnbondingDelegation {
 	valAddr, err := valAc.BytesToString(validatorAddr)
 	if err != nil {
@@ -126,13 +128,13 @@ func NewUnbondingDelegation(
 		DelegatorAddress: delAddr,
 		ValidatorAddress: valAddr,
 		Entries: []UnbondingDelegationEntry{
-			NewUnbondingDelegationEntry(creationHeight, minTime, balance, id),
+			NewUnbondingDelegationEntry(creationHeight, minTime, balance, id, erc20Denom, Erc20Amount),
 		},
 	}
 }
 
 // AddEntry - append entry to the unbonding delegation
-func (ubd *UnbondingDelegation) AddEntry(creationHeight int64, minTime time.Time, balance math.Int, unbondingID uint64) bool {
+func (ubd *UnbondingDelegation) AddEntry(creationHeight int64, minTime time.Time, balance math.Int, unbondingID uint64, erc20Denom string, erc20Amount math.Int) bool {
 	// Check the entries exists with creation_height and complete_time
 	entryIndex := -1
 	for index, ubdEntry := range ubd.Entries {
@@ -146,13 +148,15 @@ func (ubd *UnbondingDelegation) AddEntry(creationHeight int64, minTime time.Time
 		ubdEntry := ubd.Entries[entryIndex]
 		ubdEntry.Balance = ubdEntry.Balance.Add(balance)
 		ubdEntry.InitialBalance = ubdEntry.InitialBalance.Add(balance)
+		ubdEntry.Erc20Denom = erc20Denom
+		ubdEntry.Erc20Amount = ubdEntry.Erc20Amount.Add(erc20Amount)
 
 		// update the entry
 		ubd.Entries[entryIndex] = ubdEntry
 		return false
 	}
 	// append the new unbond delegation entry
-	entry := NewUnbondingDelegationEntry(creationHeight, minTime, balance, unbondingID)
+	entry := NewUnbondingDelegationEntry(creationHeight, minTime, balance, unbondingID, erc20Denom, erc20Amount)
 	ubd.Entries = append(ubd.Entries, entry)
 	return true
 }

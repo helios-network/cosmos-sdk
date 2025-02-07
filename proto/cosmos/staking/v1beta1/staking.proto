@@ -279,9 +279,13 @@ message UnbondingDelegationEntry {
   uint64 unbonding_id = 5;
 
   // Strictly positive if this entry's unbonding has been stopped by external modules
-  int64 unbonding_on_hold_ref_count = 6;
-  
-  string erc20_denom = 7; // Champ ajouté
+  int64  unbonding_on_hold_ref_count = 6;
+  string erc20_denom                 = 7; // Champ ajouté
+  string erc20_amount                = 8 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = false
+  ];
 }
 
 // RedelegationEntry defines a redelegation object with relevant metadata.

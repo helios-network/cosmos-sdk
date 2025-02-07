@@ -44,6 +44,7 @@ type Keeper interface {
 	DelegateCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
 	DelegateErc20FromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins, burnCoin sdk.Coin) error
 	UndelegateCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
+	UndelegateErc20FromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coin, erc20 sdk.Coin) error
 	MintCoins(ctx context.Context, moduleName string, amt sdk.Coins) error
 	BurnCoins(ctx context.Context, moduleName string, amt sdk.Coins) error
 
@@ -246,7 +247,7 @@ func (k BaseKeeper) UndelegateCoins(ctx context.Context, moduleAccAddr, delegato
 	return nil
 }
 
-func (k BaseKeeper) UndelegateErc20Coin(ctx context.Context, moduleAccAddr, delegatorAddr sdk.AccAddress, amt sdk.Coins) error {
+func (k BaseKeeper) UndelegateErc20(ctx context.Context, moduleAccAddr, delegatorAddr sdk.AccAddress, amt sdk.Coin, erc20 sdk.Coin) error {
 	moduleAcc := k.ak.GetAccount(ctx, moduleAccAddr)
 	if moduleAcc == nil {
 		return errorsmod.Wrapf(sdkerrors.ErrUnknownAddress, "module account %s does not exist", moduleAccAddr)
@@ -256,16 +257,20 @@ func (k BaseKeeper) UndelegateErc20Coin(ctx context.Context, moduleAccAddr, dele
 		return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, amt.String())
 	}
 
-	err := k.subUnlockedCoins(ctx, moduleAccAddr, amt, false)
+	if !erc20.IsValid() {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidCoins, erc20.String())
+	}
+
+	err := k.subUnlockedCoins(ctx, moduleAccAddr, sdk.NewCoins(amt), false)
 	if err != nil {
 		return err
 	}
 
-	if err := k.trackUndelegation(ctx, delegatorAddr, amt); err != nil {
+	if err := k.trackUndelegation(ctx, delegatorAddr, sdk.NewCoins(erc20)); err != nil {
 		return errorsmod.Wrap(err, "failed to track undelegation")
 	}
 
-	err = k.addCoins(ctx, delegatorAddr, amt)
+	err = k.addCoins(ctx, delegatorAddr, sdk.NewCoins(erc20))
 	if err != nil {
 		return err
 	}
@@ -428,8 +433,8 @@ func (k BaseKeeper) UndelegateCoinsFromModuleToAccount(
 	return k.UndelegateCoins(ctx, acc.GetAddress(), recipientAddr, amt)
 }
 
-func (k BaseKeeper) UndelegateErc20CoinFromModuleToAccount(
-	ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins,
+func (k BaseKeeper) UndelegateErc20FromModuleToAccount(
+	ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coin, erc20 sdk.Coin,
 ) error {
 	acc := k.ak.GetModuleAccount(ctx, senderModule)
 	if acc == nil {
@@ -440,7 +445,7 @@ func (k BaseKeeper) UndelegateErc20CoinFromModuleToAccount(
 		panic(errorsmod.Wrapf(sdkerrors.ErrUnauthorized, "module account %s does not have permissions to undelegate coins", senderModule))
 	}
 
-	return k.UndelegateErc20Coin(ctx, acc.GetAddress(), recipientAddr, amt)
+	return k.UndelegateErc20(ctx, acc.GetAddress(), recipientAddr, amt, erc20)
 }
 
 // MintCoins creates new coins from thin air and adds it to the module account.
