@@ -15,6 +15,7 @@ func (k Keeper) AddOrUpdateAssetWeight(
 	bondDenom string, // erc20 or asset bondDenom
 	baseAmount math.Int,
 ) error {
+
 	// Validate inputs
 	if delegation == nil {
 		return fmt.Errorf("delegation cannot be nil")
@@ -104,7 +105,7 @@ func (k Keeper) UpdateOrRemoveAssetWeight(
 
 	assetWeight, exists := delegation.AssetWeights[denom]
 	if !exists {
-		return fmt.Errorf("asset weight for denom %s does not exist", denom)
+		return fmt.Errorf("insufficient balance %s", denom)
 	}
 
 	if amountToRemove.IsNegative() {
