@@ -225,9 +225,9 @@ func (k Querier) GetDelegations(ctx context.Context, req *types.QueryGetDelegati
 		return false
 	})
 	if err != nil {
-		return &types.QueryGetDelegationsResponse{Delegations: &delegations}, err
+		return &types.QueryGetDelegationsResponse{Delegations: delegations}, err
 	}
-	return &types.QueryGetDelegationsResponse{Delegations: &delegations}, nil
+	return &types.QueryGetDelegationsResponse{Delegations: delegations}, nil
 }
 
 // Delegation queries delegate info for given validator delegator pair
