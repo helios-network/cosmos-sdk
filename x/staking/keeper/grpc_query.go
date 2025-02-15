@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"cosmossdk.io/math"
 	"cosmossdk.io/store/prefix"
 	storetypes "cosmossdk.io/store/types"
 
@@ -201,6 +202,32 @@ func (k Querier) ValidatorUnbondingDelegations(ctx context.Context, req *types.Q
 		UnbondingResponses: ubds,
 		Pagination:         pageRes,
 	}, nil
+}
+
+func (k Querier) GetDelegations(ctx context.Context, req *types.QueryGetDelegationsRequest) (*types.QueryGetDelegationsResponse, error) {
+	delegations := make([]*types.Delegation, 0)
+	totalVotingPower := math.LegacyZeroDec()
+	// iterate over all delegations from voter, deduct from any delegated-to validators
+	err := k.IterateDelegations(ctx, sdk.AccAddress(req.DelegatorAddr), func(index int64, delegation types.DelegationI) (stop bool) {
+		// valAddrStr := delegation.GetValidatorAddr()
+
+		votingPower := delegation.GetShares() //.MulInt(val.BondedTokens).Quo(val.DelegatorShares)
+		totalVotingPower = totalVotingPower.Add(votingPower)
+
+		delegationData := &types.Delegation{
+			DelegatorAddress:    delegation.GetDelegatorAddr(),
+			ValidatorAddress:    delegation.GetValidatorAddr(),
+			Shares:              delegation.GetShares(),
+			AssetWeights:        map[string]*types.AssetWeight{},
+			TotalWeightedAmount: math.ZeroInt(),
+		}
+		delegations = append(delegations, delegationData)
+		return false
+	})
+	if err != nil {
+		return &types.QueryGetDelegationsResponse{Delegations: &delegations}, err
+	}
+	return &types.QueryGetDelegationsResponse{Delegations: &delegations}, nil
 }
 
 // Delegation queries delegate info for given validator delegator pair

@@ -49,6 +49,13 @@ service Query {
   }
 
   // Delegation queries delegate info for given validator delegator pair.
+  rpc GetDelegations(QueryGetDelegationsRequest) returns (QueryGetDelegationsResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/delegations/"
+                                                 "{delegator_addr}";
+  }
+
+  // Delegation queries delegate info for given validator delegator pair.
   rpc Delegation(QueryDelegationRequest) returns (QueryDelegationResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/{validator_addr}/delegations/"
@@ -384,4 +391,22 @@ message QueryParamsRequest {}
 message QueryParamsResponse {
   // params holds all the parameters of this module.
   Params params = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+// QueryGetDelegationsRequest is the request type for the Query/GetDelegations RPC method
+message QueryGetDelegationsRequest {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // delegator_addr defines the delegator address to query for
+  string delegator_addr = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// QueryGetDelegationsResponse is the response type for the Query/GetDelegations RPC method
+message QueryGetDelegationsResponse {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // delegations defines all the delegations from a delegator
+  repeated cosmos.staking.v1beta1.Delegation delegations = 1 [(amino.dont_omitempty) = true];
 }
