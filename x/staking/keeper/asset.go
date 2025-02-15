@@ -11,9 +11,11 @@ import (
 
 func (k Keeper) AddOrUpdateAssetWeight(
 	delegation *types.Delegation,
-	asset sdk.Coin,
+	asset sdk.Coin, // coin => bondenom : ahelios and amt = weigted
+	bondDenom string, // erc20 or asset bondDenom
 	baseAmount math.Int,
 ) error {
+
 	// Validate inputs
 	if delegation == nil {
 		return fmt.Errorf("delegation cannot be nil")
@@ -33,15 +35,15 @@ func (k Keeper) AddOrUpdateAssetWeight(
 	}
 
 	// Get or create asset weight for the denom
-	assetWeight, exists := delegation.AssetWeights[asset.Denom]
+	assetWeight, exists := delegation.AssetWeights[bondDenom]
 	if !exists {
 		// Create new asset weight
 		assetWeight = &types.AssetWeight{
-			Denom:          asset.Denom,
+			Denom:          bondDenom,
 			BaseAmount:     baseAmount,
 			WeightedAmount: asset.Amount,
 		}
-		delegation.AssetWeights[asset.Denom] = assetWeight
+		delegation.AssetWeights[bondDenom] = assetWeight
 	} else {
 		// Update existing asset weight
 		assetWeight.BaseAmount = assetWeight.BaseAmount.Add(baseAmount)
@@ -64,20 +66,23 @@ func (k Keeper) ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math
 	// Get all staking assets
 	stakingAssets := k.erc20Keeper.GetAllStakingAssets(ctx)
 
+	baseDenom, err := sdk.GetBaseDenom()
+	if err != nil {
+		return sdk.Coin{}, fmt.Errorf("error while retreive base denom")
+	}
+
 	// Find the matching asset
 	for _, asset := range stakingAssets {
 		if asset.GetDenom() == denom {
 			// Apply weight conversion
 			weight := math.NewIntFromUint64(asset.GetBaseWeight())
 			weightedAmount := amount.Mul(weight).Quo(math.NewInt(100))
-
 			// Return Cosmos SDK coin
-			return sdk.NewCoin(denom, weightedAmount), nil
+			return sdk.NewCoin(baseDenom, weightedAmount), nil
 		}
 	}
 
-	baseDenom, err := sdk.GetBaseDenom()
-	if err == nil && denom == baseDenom { // we're receiving base ahelios from genesis or from an internal call
+	if denom == baseDenom { // we're receiving base ahelios from genesis or from an internal call
 		return sdk.NewCoin(denom, amount), nil
 	}
 
@@ -100,7 +105,7 @@ func (k Keeper) UpdateOrRemoveAssetWeight(
 
 	assetWeight, exists := delegation.AssetWeights[denom]
 	if !exists {
-		return fmt.Errorf("asset weight for denom %s does not exist", denom)
+		return fmt.Errorf("insufficient balance %s", denom)
 	}
 
 	if amountToRemove.IsNegative() {

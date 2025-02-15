@@ -423,7 +423,7 @@ func (k Keeper) RemoveUnbondingDelegation(ctx context.Context, ubd types.Unbondi
 // the given addresses. It creates the unbonding delegation if it does not exist.
 func (k Keeper) SetUnbondingDelegationEntry(
 	ctx context.Context, delegatorAddr sdk.AccAddress, validatorAddr sdk.ValAddress,
-	creationHeight int64, minTime time.Time, balance math.Int,
+	creationHeight int64, minTime time.Time, balance math.Int, erc20Denom string, erc20Amount math.Int,
 ) (types.UnbondingDelegation, error) {
 	id, err := k.IncrementUnbondingID(ctx)
 	if err != nil {
@@ -433,9 +433,10 @@ func (k Keeper) SetUnbondingDelegationEntry(
 	isNewUbdEntry := true
 	ubd, err := k.GetUnbondingDelegation(ctx, delegatorAddr, validatorAddr)
 	if err == nil {
-		isNewUbdEntry = ubd.AddEntry(creationHeight, minTime, balance, id)
+		isNewUbdEntry = ubd.AddEntry(creationHeight, minTime, balance, id, erc20Denom, erc20Amount)
 	} else if errors.Is(err, types.ErrNoUnbondingDelegation) {
-		ubd = types.NewUnbondingDelegation(delegatorAddr, validatorAddr, creationHeight, minTime, balance, id, k.validatorAddressCodec, k.authKeeper.AddressCodec())
+		ubd = types.NewUnbondingDelegation(delegatorAddr, validatorAddr, creationHeight, minTime, balance, id, k.validatorAddressCodec,
+			k.authKeeper.AddressCodec(), erc20Denom, erc20Amount)
 	} else {
 		return ubd, err
 	}
@@ -868,6 +869,7 @@ func (k Keeper) Delegate(
 	validator types.Validator,
 	subtractAccount bool,
 ) (newShares math.LegacyDec, err error) {
+
 	// In some situations, the exchange rate becomes invalid, e.g. if
 	// Validator loses all tokens due to slashing. In this case,
 	// make all future delegations invalid.
@@ -889,18 +891,14 @@ func (k Keeper) Delegate(
 
 	// Convert asset with proper error handling
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	// return baseDenom with the amount weigted
 	asset, err := k.ConvertAssetToSDKCoin(sdkCtx, bondDenom, bondAmt)
 	if err != nil {
 		return math.LegacyZeroDec(), fmt.Errorf("asset %s not found: %w", bondDenom, err)
 	}
 
-	// Perform EVM contract availability check
-	if err := k.checkEVMTokenAvailability(ctx, bondDenom, bondAmt); err != nil {
-		return math.LegacyZeroDec(), err
-	}
-
 	// Handle token source and pool transfers
-	if err := k.handleTokenSourceTransfer(ctx, delAddr, asset, tokenSrc, validator, subtractAccount); err != nil {
+	if err := k.handleTokenSourceTransfer(ctx, delAddr, asset, tokenSrc, validator, subtractAccount, sdk.NewCoin(bondDenom, bondAmt)); err != nil {
 		return math.LegacyZeroDec(), err
 	}
 
@@ -911,7 +909,7 @@ func (k Keeper) Delegate(
 	}
 
 	// Update delegation with asset weights
-	if err := k.updateDelegationDetails(ctx, &delegation, asset, bondAmt, newShares); err != nil {
+	if err := k.updateDelegationDetails(ctx, &delegation, asset, bondDenom, bondAmt, newShares); err != nil {
 		return newShares, err
 	}
 
@@ -955,12 +953,6 @@ func (k Keeper) prepareDelegation(
 	return delegation, nil
 }
 
-// checkEVMTokenAvailability is a placeholder for EVM token availability check
-func (k Keeper) checkEVMTokenAvailability(_ context.Context, _ string, _ math.Int) error {
-	// TODO: Implement actual EVM Extension contract token availability check
-	return nil
-}
-
 // handleTokenSourceTransfer manages token transfers based on source and validator status
 func (k Keeper) handleTokenSourceTransfer(
 	ctx context.Context,
@@ -969,6 +961,7 @@ func (k Keeper) handleTokenSourceTransfer(
 	tokenSrc types.BondStatus,
 	validator types.Validator,
 	subtractAccount bool,
+	burnCoin sdk.Coin,
 ) error {
 	// If subtractAccount is true, we are performing a delegation and not a redelegation
 	if subtractAccount {
@@ -986,13 +979,12 @@ func (k Keeper) handleTokenSourceTransfer(
 			return fmt.Errorf("invalid validator status")
 		}
 
-		bondDenom, err := k.BondDenom(ctx)
-		if err != nil {
-			return err
+		coins := sdk.NewCoins(sdk.NewCoin(asset.Denom, asset.Amount))
+		if burnCoin.Denom == asset.Denom {
+			return k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins)
+		} else {
+			return k.bankKeeper.DelegateErc20FromAccountToModule(ctx, delAddr, sendName, coins, burnCoin)
 		}
-
-		coins := sdk.NewCoins(sdk.NewCoin(bondDenom, asset.Amount))
-		return k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins)
 	}
 
 	// Handle token transfers between pools for redelegation
@@ -1019,11 +1011,12 @@ func (k Keeper) updateDelegationDetails(
 	ctx context.Context,
 	delegation *types.Delegation,
 	asset sdk.Coin,
+	bondDenom string,
 	bondAmt math.Int,
 	newShares math.LegacyDec,
 ) error {
 	// Add or update asset weights
-	if err := k.AddOrUpdateAssetWeight(delegation, asset, bondAmt); err != nil {
+	if err := k.AddOrUpdateAssetWeight(delegation, asset, bondDenom, bondAmt); err != nil {
 		return err
 	}
 
@@ -1171,8 +1164,10 @@ func (k Keeper) Undelegate(
 	delAddr sdk.AccAddress,
 	valAddr sdk.ValAddress,
 	sharesAmount math.LegacyDec,
-	sharesDenom string,
+	erc20Denom string,
+	erc20Amount math.Int,
 ) (time.Time, math.Int, error) {
+
 	validator, err := k.GetValidator(ctx, valAddr)
 	if err != nil {
 		return time.Time{}, math.Int{}, err
@@ -1204,7 +1199,7 @@ func (k Keeper) Undelegate(
 
 	// Update asset weight for the specific denom
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	if err := k.UpdateOrRemoveAssetWeight(&delegation, sharesDenom, returnAmount, sdkCtx); err != nil {
+	if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, erc20Amount, sdkCtx); err != nil {
 		return time.Time{}, math.Int{}, err
 	}
 
@@ -1227,7 +1222,7 @@ func (k Keeper) Undelegate(
 	}
 
 	completionTime := sdkCtx.BlockHeader().Time.Add(unbondingTime)
-	ubd, err := k.SetUnbondingDelegationEntry(ctx, delAddr, valAddr, sdkCtx.BlockHeight(), completionTime, returnAmount)
+	ubd, err := k.SetUnbondingDelegationEntry(ctx, delAddr, valAddr, sdkCtx.BlockHeight(), completionTime, returnAmount, erc20Denom, erc20Amount)
 	if err != nil {
 		return time.Time{}, math.Int{}, err
 	}
@@ -1253,7 +1248,6 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 	if err != nil {
 		return nil, err
 	}
-
 	balances := sdk.NewCoins()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	ctxTime := sdkCtx.BlockHeader().Time
@@ -1275,9 +1269,15 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 
 			// track undelegation only when remaining or truncated shares are non-zero
 			if !entry.Balance.IsZero() {
+				if err != nil {
+					return nil, err
+				}
+
 				amt := sdk.NewCoin(bondDenom, entry.Balance)
-				if err := k.bankKeeper.UndelegateCoinsFromModuleToAccount(
-					ctx, types.NotBondedPoolName, delegatorAddress, sdk.NewCoins(amt),
+				erc20 := sdk.NewCoin(entry.Erc20Denom, entry.Erc20Amount)
+				// TODO : will undelegate the coin
+				if err := k.bankKeeper.UndelegateErc20FromModuleToAccount(
+					ctx, types.NotBondedPoolName, delegatorAddress, amt, erc20,
 				); err != nil {
 					return nil, err
 				}
