@@ -222,8 +222,8 @@ func (k Querier) GetDelegations(ctx context.Context, req *types.QueryGetDelegati
 			DelegatorAddress:    delegation.GetDelegatorAddr(),
 			ValidatorAddress:    delegation.GetValidatorAddr(),
 			Shares:              delegation.GetShares(),
-			AssetWeights:        map[string]*types.AssetWeight{},
-			TotalWeightedAmount: math.ZeroInt(),
+			AssetWeights:        delegation.GetAssetWeight(),
+			TotalWeightedAmount: delegation.GetTotalWeightedAmount(),
 		}
 		delegations = append(delegations, delegationData)
 		return false

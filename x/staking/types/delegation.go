@@ -55,6 +55,14 @@ func (d Delegation) GetValidatorAddr() string {
 }
 func (d Delegation) GetShares() math.LegacyDec { return d.Shares }
 
+func (d Delegation) GetAssetWeight() map[string]*AssetWeight {
+	return d.AssetWeights
+}
+
+func (d Delegation) GetTotalWeightedAmount() math.Int {
+	return d.TotalWeightedAmount
+}
+
 // Delegations is a collection of delegations
 type Delegations []Delegation
 
