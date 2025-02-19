@@ -358,6 +358,8 @@ message Params {
     (amino.dont_omitempty) = true,
     (cosmos_proto.scalar)  = "cosmos.Dec"
   ];
+  // treasury_address defines the address that receives treasury funds
+  string treasury_address = 7;
 }
 
 // DelegationResponse is equivalent to Delegation except that it contains a

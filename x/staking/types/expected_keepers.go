@@ -41,6 +41,7 @@ type BankKeeper interface {
 	DelegateErc20FromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins, burnCoin sdk.Coin) error
 
 	BurnCoins(ctx context.Context, name string, amt sdk.Coins) error
+	SafeTransferTreasury(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error
 }
 
 // Erc20Asset defines the properties of an ERC20 asset without directly importing Helios types.

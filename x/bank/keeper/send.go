@@ -312,6 +312,10 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 	return nil
 }
 
+func (k BaseSendKeeper) SafeTransferTreasury(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error {
+	return k.addCoins(ctx, addr, amt)
+}
+
 // addCoins increase the addr balance by the given amt. Fails if the provided
 // amt is invalid. It emits a coin received event.
 func (k BaseSendKeeper) addCoins(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error {

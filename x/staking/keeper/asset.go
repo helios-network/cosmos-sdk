@@ -9,6 +9,61 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
+func (k Keeper) GetTreasuryAddress(ctx sdk.Context) (sdk.AccAddress, error) {
+	// Get the genesis validator address that's being used as treasury
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get params: %w", err)
+	}
+	if params.TreasuryAddress == "" {
+		return nil, fmt.Errorf("treasury address not set in genesis")
+	}
+
+	treasuryAddr, err := sdk.AccAddressFromBech32(params.TreasuryAddress)
+	if err != nil {
+		return nil, fmt.Errorf("invalid treasury address in genesis: %w", err)
+	}
+
+	// Verify the account exists
+	acc := k.authKeeper.GetAccount(ctx, treasuryAddr)
+	if acc == nil {
+		return nil, fmt.Errorf("treasury account does not exist: %s", params.TreasuryAddress)
+	}
+
+	k.Logger(ctx).Info("Fetched Treasury Address from Genesis", "address", treasuryAddr.String())
+
+	return treasuryAddr, nil
+}
+
+// collectSlashedAssets directly transfers slashed assets to the Treasury
+func (k Keeper) collectSlashedAssets(ctx sdk.Context, validatorAddr string, realSlashedAssets map[string]sdk.Coin) error {
+	// Define Treasury (Genesis) wallet address
+	treasuryAddr, err := k.GetTreasuryAddress(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch treasury address: %w", err)
+	}
+
+	var coinsToTransfer sdk.Coins
+
+	// Iterate through slashed assets and prepare transfer
+	for _, realAsset := range realSlashedAssets {
+		coinsToTransfer = coinsToTransfer.Add(realAsset)
+	}
+
+	// Send slashed coins to the treasury
+	if !coinsToTransfer.Empty() {
+		err := k.bankKeeper.SafeTransferTreasury(ctx, treasuryAddr, coinsToTransfer)
+		if err != nil {
+			k.Logger(ctx).Error("Failed to send slashed assets to treasury", "amount", coinsToTransfer.String(), "error", err)
+			return err
+		}
+	}
+
+	k.Logger(ctx).Info("Slashed assets successfully collected and sent to treasury", "validator", validatorAddr, "assets", coinsToTransfer.String())
+
+	return nil
+}
+
 func (k Keeper) AddOrUpdateAssetWeight(
 	delegation *types.Delegation,
 	asset sdk.Coin, // coin => bondenom : ahelios and amt = weigted
@@ -57,6 +112,34 @@ func (k Keeper) AddOrUpdateAssetWeight(
 	}
 
 	return nil
+}
+
+// ConvertWeightedToRealAsset converts a weighted amount back to the actual asset amount.
+func (k Keeper) ConvertWeightedToRealAsset(ctx sdk.Context, denom string, weightedAmount math.Int) (sdk.Coin, error) {
+	if weightedAmount.IsNegative() {
+		return sdk.Coin{}, fmt.Errorf("invalid weighted amount received")
+	}
+
+	// Get all staking assets
+	stakingAssets := k.erc20Keeper.GetAllStakingAssets(ctx)
+
+	// Find the matching asset weight
+	for _, asset := range stakingAssets {
+		if asset.GetDenom() == denom {
+			weight := math.NewIntFromUint64(asset.GetBaseWeight())
+			if weight.IsZero() {
+				return sdk.Coin{}, fmt.Errorf("weight for %s is zero, cannot convert", denom)
+			}
+
+			// Convert weighted amount back to real asset value
+			realAmount := weightedAmount.Quo(weight)
+
+			// Return Cosmos SDK coin with original denom
+			return sdk.NewCoin(denom, realAmount), nil
+		}
+	}
+
+	return sdk.Coin{}, fmt.Errorf("denom %s not found in staking assets", denom)
 }
 
 func (k Keeper) ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math.Int) (sdk.Coin, error) {

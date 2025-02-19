@@ -408,5 +408,6 @@ message QueryGetDelegationsResponse {
   option (gogoproto.goproto_getters) = false;
 
   // delegations defines all the delegations from a delegator
-  repeated cosmos.staking.v1beta1.Delegation delegations = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  repeated cosmos.staking.v1beta1.Delegation delegations = 1
+      [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
