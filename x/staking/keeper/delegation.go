@@ -1199,7 +1199,8 @@ func (k Keeper) Undelegate(
 
 	// Update asset weight for the specific denom
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, erc20Amount, sdkCtx); err != nil {
+
+	if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, returnAmount, sdkCtx); err != nil {
 		return time.Time{}, math.Int{}, err
 	}
 

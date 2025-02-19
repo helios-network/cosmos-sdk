@@ -223,13 +223,13 @@ func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math
 
 				// Update delegation shares
 				delegation.Shares = delegation.Shares.Add(math.LegacyNewDecFromInt(totalDiff))
-				if err := k.Hooks().AfterDelegationModified(ctx, delAddr, sdk.ValAddress(valAddr)); err != nil {
-					return err
-				}
-
 				// Save updated delegation
 				delegations[i] = delegation
 				k.SetDelegation(ctx, delegation)
+				// Update startDelegationInfo
+				if err := k.Hooks().AfterDelegationModified(ctx, delAddr, sdk.ValAddress(valAddr)); err != nil {
+					return err
+				}
 			}
 		}
 
