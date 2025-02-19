@@ -76,7 +76,7 @@ func (k Keeper) ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math
 		if asset.GetDenom() == denom {
 			// Apply weight conversion
 			weight := math.NewIntFromUint64(asset.GetBaseWeight())
-			weightedAmount := amount.Mul(weight).Quo(math.NewInt(100))
+			weightedAmount := amount.Mul(weight)
 			// Return Cosmos SDK coin
 			return sdk.NewCoin(baseDenom, weightedAmount), nil
 		}
