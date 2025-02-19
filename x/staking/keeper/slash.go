@@ -172,6 +172,31 @@ func (k Keeper) Slash(ctx context.Context, consAddr sdk.ConsAddress, infractionH
 		}
 	}
 
+	// Adjust Asset Weights Based on Slashing
+	delegations, err := k.GetValidatorDelegations(ctx, sdk.ValAddress(operatorAddress))
+	if err != nil {
+		return math.NewInt(0), fmt.Errorf("failed to get delegations for validator: %w", err)
+	}
+
+	for i, delegation := range delegations {
+		totalDelegationDiff := math.ZeroInt()
+		for denom, assetWeight := range delegation.AssetWeights {
+			// Convert WeightedAmount to Dec before multiplying with slashFactor
+			reductionAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(slashFactor).TruncateInt()
+			assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(reductionAmount)
+
+			if assetWeight.WeightedAmount.IsZero() {
+				delete(delegation.AssetWeights, denom)
+			} else {
+				delegation.AssetWeights[denom] = assetWeight
+			}
+			totalDelegationDiff = totalDelegationDiff.Add(reductionAmount)
+		}
+		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Sub(totalDelegationDiff)
+		delegations[i] = delegation
+		k.SetDelegation(ctx, delegation)
+	}
+
 	// Deduct from validator's bonded tokens and update the validator.
 	// Burn the slashed tokens from the pool account and decrease the total supply.
 	validator, err = k.RemoveValidatorTokens(ctx, validator, tokensToBurn)
