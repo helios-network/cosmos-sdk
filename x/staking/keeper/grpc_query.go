@@ -222,8 +222,8 @@ func (k Querier) GetDelegations(ctx context.Context, req *types.QueryGetDelegati
 			DelegatorAddress:    delegation.GetDelegatorAddr(),
 			ValidatorAddress:    delegation.GetValidatorAddr(),
 			Shares:              delegation.GetShares(),
-			AssetWeights:        map[string]*types.AssetWeight{},
-			TotalWeightedAmount: math.ZeroInt(),
+			AssetWeights:        delegation.GetAssetWeight(),
+			TotalWeightedAmount: delegation.GetTotalWeightedAmount(),
 		}
 		delegations = append(delegations, delegationData)
 		return false
@@ -625,6 +625,8 @@ func delegationToDelegationResponse(ctx context.Context, k *Keeper, del types.De
 		del.DelegatorAddress,
 		del.GetValidatorAddr(),
 		del.Shares,
+		del.AssetWeights,
+		del.TotalWeightedAmount,
 		sdk.NewCoin(bondDenom, val.TokensFromShares(del.Shares).TruncateInt()),
 	), nil
 }
