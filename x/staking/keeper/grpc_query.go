@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -61,6 +62,69 @@ func (k Querier) Validators(ctx context.Context, req *types.QueryValidatorsReque
 	}
 
 	return &types.QueryValidatorsResponse{Validators: vals.Validators, Pagination: pageRes}, nil
+}
+
+func (k Querier) ShareRepartitionMap(ctx context.Context, req *types.QueryShareRepartitionMapRequest) (*types.QueryShareRepartitionMapResponse, error) {
+	res, err := k.Validators(ctx, &types.QueryValidatorsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	shareRepartitionMap := map[string]types.SharesRepartition{}
+	stakingAssets := k.erc20Keeper.GetAllStakingAssets(sdk.UnwrapSDKContext(ctx))
+	for _, consensusAsset := range stakingAssets {
+		shareRepartitionMap[consensusAsset.GetDenom()] = types.SharesRepartition{
+			Denom:                         consensusAsset.GetDenom(),
+			ContractAddress:               consensusAsset.GetContractAddress(),
+			BaseWeight:                    consensusAsset.GetBaseWeight(),
+			NetworkShares:                 math.NewIntFromUint64(0),
+			NetworkPercentageSecurisation: "0%",
+		}
+	}
+
+	for _, validator := range res.Validators {
+		delegationsRes, err := k.ValidatorDelegations(ctx, &types.QueryValidatorDelegationsRequest{ValidatorAddr: validator.OperatorAddress})
+		if err != nil {
+			continue
+		}
+		for _, delegationRes := range delegationsRes.DelegationResponses {
+			delegation := delegationRes.GetDelegation()
+			for _, asset := range delegation.AssetWeights {
+				shareRepartition, exists := shareRepartitionMap[asset.Denom]
+				if !exists {
+					continue
+				}
+				shareRepartition.NetworkShares = shareRepartition.NetworkShares.Add(asset.WeightedAmount)
+
+				sdk.UnwrapSDKContext(ctx).Logger().Info("Asset", "asset.WeightedAmount", asset.WeightedAmount, "shareRepartition.NetworkShares", shareRepartition.NetworkShares)
+				shareRepartitionMap[asset.Denom] = shareRepartition
+			}
+		}
+	}
+
+	totalShares := math.NewIntFromUint64(0)
+	for _, consensusAsset := range stakingAssets {
+		shareRepartition, exists := shareRepartitionMap[consensusAsset.GetDenom()]
+		if !exists {
+			continue
+		}
+		totalShares = totalShares.Add(shareRepartition.NetworkShares)
+	}
+
+	for _, consensusAsset := range stakingAssets {
+		shareRepartition, exists := shareRepartitionMap[consensusAsset.GetDenom()]
+		if !exists {
+			continue
+		}
+		if totalShares.LTE(math.NewIntFromUint64(0)) {
+			shareRepartition.NetworkPercentageSecurisation = "0%"
+			continue
+		}
+		percentage := shareRepartitionMap[consensusAsset.GetDenom()].NetworkShares.ToLegacyDec().Mul(math.NewIntFromUint64(uint64(100)).ToLegacyDec()).Quo(totalShares.ToLegacyDec())
+		shareRepartition.NetworkPercentageSecurisation = fmt.Sprintf("%f%%", percentage)
+		shareRepartitionMap[consensusAsset.GetDenom()] = shareRepartition
+	}
+
+	return &types.QueryShareRepartitionMapResponse{SharesRepartitionMap: shareRepartitionMap}, nil
 }
 
 // Validator queries validator info for given validator address

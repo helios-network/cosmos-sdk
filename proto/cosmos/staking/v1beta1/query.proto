@@ -5,6 +5,7 @@ import "cosmos/base/query/v1beta1/pagination.proto";
 import "gogoproto/gogo.proto";
 import "google/api/annotations.proto";
 import "cosmos/staking/v1beta1/staking.proto";
+import "cosmos/staking/v1beta1/shares.proto";
 import "cosmos_proto/cosmos.proto";
 import "cosmos/query/v1/query.proto";
 import "amino/amino.proto";
@@ -134,6 +135,11 @@ service Query {
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/params";
+  }
+
+  rpc ShareRepartitionMap(QueryShareRepartitionMapRequest) returns (QueryShareRepartitionMapResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/share_repartition_map";
   }
 }
 
@@ -410,4 +416,17 @@ message QueryGetDelegationsResponse {
   // delegations defines all the delegations from a delegator
   repeated cosmos.staking.v1beta1.Delegation delegations = 1
       [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+message QueryShareRepartitionMapRequest {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+message QueryShareRepartitionMapResponse {
+  // sharesRepartitionMap defines all the repartition shares info of the network.
+  map<string, SharesRepartition> shares_repartition_map = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
