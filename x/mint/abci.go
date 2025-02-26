@@ -26,31 +26,35 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper) error {
 		return err
 	}
 
-	// Define the inflation rate based on the supply phase - using governance-defined rates
+	// Define the inflation rate and reference supply based on the stage
 	var inflationRate math.LegacyDec
+	var stageSupplyCap math.Int // Reference supply for inflation calculation
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	switch {
-
 	case totalSupply.LT(types.HeliosToBaseUnits(types.EarlyStageThreshold)):
+		stageSupplyCap = types.HeliosToBaseUnits(types.EarlyStageThreshold) // 2B HELIOS
 		inflationRate, err = k.GetEarlyPhaseInflationRate(ctx)
 		if err != nil {
 			sdkCtx.Logger().Error("failed to get early phase inflation rate", "error", err)
 			inflationRate = math.LegacyNewDecWithPrec(15, 2) // Default 15%
 		}
 	case totalSupply.LT(types.HeliosToBaseUnits(types.GrowthStageThreshold)):
+		stageSupplyCap = types.HeliosToBaseUnits(types.GrowthStageThreshold) // 4B HELIOS
 		inflationRate, err = k.GetGrowthPhaseInflationRate(ctx)
 		if err != nil {
 			sdkCtx.Logger().Error("failed to get growth phase inflation rate", "error", err)
 			inflationRate = math.LegacyNewDecWithPrec(12, 2) // Default 12%
 		}
 	case totalSupply.LT(types.HeliosToBaseUnits(types.MatureStageThreshold)):
+		stageSupplyCap = types.HeliosToBaseUnits(types.MatureStageThreshold) // 5B HELIOS
 		inflationRate, err = k.GetMaturePhaseInflationRate(ctx)
 		if err != nil {
 			sdkCtx.Logger().Error("failed to get mature phase inflation rate", "error", err)
 			inflationRate = math.LegacyNewDecWithPrec(5, 2) // Default 5%
 		}
 	default: // Post-Cap Phase (>5B HELIOS)
+		stageSupplyCap = totalSupply // Now based on actual supply since it's governance-controlled
 		inflationRate, err = k.GetPostCapInflationRate(ctx)
 		if err != nil {
 			sdkCtx.Logger().Error("failed to get post-cap inflation rate", "error", err)
@@ -58,8 +62,8 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper) error {
 		}
 	}
 
-	// Calculate annual provisions based on the inflation rate and total supply
-	annualProvisions := math.LegacyNewDecFromInt(totalSupply).Mul(inflationRate)
+	// Calculate annual provisions based on the inflation rate and **stage supply cap**
+	annualProvisions := math.LegacyNewDecFromInt(stageSupplyCap).Mul(inflationRate)
 
 	// Calculate the mint amount per block
 	blocksPerYear := math.LegacyNewDec(int64(60 * 60 * 24 * 365 / 5)) // 5s block time
@@ -78,6 +82,7 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper) error {
 
 	// Create coins to mint
 	mintedCoins := sdk.NewCoins(sdk.NewCoin(bondDenom, mintPerBlock.TruncateInt()))
+	sdkCtx.Logger().Info("New minted HELIOS coin per block", "info", mintedCoins)
 
 	// Mint new HELIOS tokens
 	err = k.MintCoins(ctx, mintedCoins)

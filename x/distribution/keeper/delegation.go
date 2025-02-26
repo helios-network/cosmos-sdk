@@ -79,6 +79,7 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 		panic("negative rewards should not be possible")
 	}
 	// note: necessary to truncate so we don't allow withdrawing more rewards than owed
+	//TODO: reduce weighted amount if > 5%-10% by governance
 	rewards := difference.MulDecTruncate(stake)
 	return rewards, nil
 }
