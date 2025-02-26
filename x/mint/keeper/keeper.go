@@ -85,7 +85,7 @@ func (k Keeper) TotalHeliosSupply(ctx context.Context) (math.Int, error) {
 
 // HeliosDenom retrieves the denomination of the Helios token used in the minting process.
 func (k Keeper) HeliosDenom(ctx context.Context) (string, error) {
-	return k.stakingKeeper.HeliosDenom(ctx)
+	return k.stakingKeeper.GetHeliosDenom(ctx)
 }
 
 // BondedRatio implements an alias call to the underlying staking keeper's
