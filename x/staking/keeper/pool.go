@@ -85,8 +85,8 @@ func (k Keeper) TotalBondedTokens(ctx context.Context) (math.Int, error) {
 	return k.bankKeeper.GetBalance(ctx, bondedPool.GetAddress(), bondDenom).Amount, nil
 }
 
-// StakingTokenSupply staking tokens from the total supply
-func (k Keeper) StakingTokenSupply(ctx context.Context) (math.Int, error) {
+// TotalHeliosSupply staking tokens from the total supply
+func (k Keeper) TotalHeliosSupply(ctx context.Context) (math.Int, error) {
 	bondDenom, err := k.BondDenom(ctx)
 	if err != nil {
 		return math.ZeroInt(), err
@@ -94,9 +94,18 @@ func (k Keeper) StakingTokenSupply(ctx context.Context) (math.Int, error) {
 	return k.bankKeeper.GetSupply(ctx, bondDenom).Amount, nil
 }
 
+// TotalHeliosSupply staking tokens from the total supply
+func (k Keeper) GetHeliosDenom(ctx context.Context) (string, error) {
+	bondDenom, err := k.BondDenom(ctx)
+	if err != nil {
+		return bondDenom, err
+	}
+	return bondDenom, nil
+}
+
 // BondedRatio the fraction of the staking tokens which are currently bonded
 func (k Keeper) BondedRatio(ctx context.Context) (math.LegacyDec, error) {
-	stakeSupply, err := k.StakingTokenSupply(ctx)
+	stakeSupply, err := k.TotalHeliosSupply(ctx)
 	if err != nil {
 		return math.LegacyZeroDec(), err
 	}

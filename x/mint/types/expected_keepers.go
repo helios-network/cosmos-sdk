@@ -10,7 +10,8 @@ import (
 
 // StakingKeeper defines the expected staking keeper
 type StakingKeeper interface {
-	StakingTokenSupply(ctx context.Context) (math.Int, error)
+	TotalHeliosSupply(ctx context.Context) (math.Int, error)
+	HeliosDenom(ctx context.Context) (string, error)
 	BondedRatio(ctx context.Context) (math.LegacyDec, error)
 }
 

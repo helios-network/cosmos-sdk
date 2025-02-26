@@ -91,10 +91,6 @@ type AppModule struct {
 
 	// legacySubspace is used solely for migration of x/params managed parameters
 	legacySubspace exported.Subspace
-
-	// inflationCalculator is used to calculate the inflation rate during BeginBlock.
-	// If inflationCalculator is nil, the default inflation calculation logic is used.
-	inflationCalculator types.InflationCalculationFn
 }
 
 // NewAppModule creates a new AppModule object. If the InflationCalculationFn
@@ -111,11 +107,9 @@ func NewAppModule(
 	}
 
 	return AppModule{
-		AppModuleBasic:      AppModuleBasic{cdc: cdc},
-		keeper:              keeper,
-		authKeeper:          ak,
-		inflationCalculator: ic,
-		legacySubspace:      ss,
+		AppModuleBasic: AppModuleBasic{cdc: cdc},
+		keeper:         keeper,
+		legacySubspace: ss,
 	}
 }
 
@@ -159,7 +153,7 @@ func (AppModule) ConsensusVersion() uint64 { return ConsensusVersion }
 
 // BeginBlock returns the begin blocker for the mint module.
 func (am AppModule) BeginBlock(ctx context.Context) error {
-	return BeginBlocker(ctx, am.keeper, am.inflationCalculator)
+	return BeginBlocker(ctx, am.keeper)
 }
 
 // AppModuleSimulation functions

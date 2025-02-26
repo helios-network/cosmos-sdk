@@ -5,6 +5,7 @@ package types
 
 import (
 	context "context"
+	cosmossdk_io_math "cosmossdk.io/math"
 	fmt "fmt"
 	_ "github.com/cosmos/cosmos-proto"
 	_ "github.com/cosmos/cosmos-sdk/types/msgservice"
@@ -130,37 +131,212 @@ func (m *MsgUpdateParamsResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_MsgUpdateParamsResponse proto.InternalMessageInfo
 
+// UpdateInflationProposal defines a governance proposal to update
+// an inflation rate for a specific supply phase
+type UpdateInflationProposal struct {
+	Title       string                      `protobuf:"bytes,1,opt,name=title,proto3" json:"title,omitempty"`
+	Description string                      `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	Phase       string                      `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"`
+	NewRate     cosmossdk_io_math.LegacyDec `protobuf:"bytes,4,opt,name=new_rate,json=newRate,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"new_rate"`
+}
+
+
+func (m *UpdateInflationProposal) Reset()         { *m = UpdateInflationProposal{} }
+func (m *UpdateInflationProposal) String() string { return proto.CompactTextString(m) }
+func (*UpdateInflationProposal) ProtoMessage()    {}
+func (*UpdateInflationProposal) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a0d933a8bf5e188a, []int{2}
+}
+func (m *UpdateInflationProposal) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *UpdateInflationProposal) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_UpdateInflationProposal.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *UpdateInflationProposal) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_UpdateInflationProposal.Merge(m, src)
+}
+func (m *UpdateInflationProposal) XXX_Size() int {
+	return m.Size()
+}
+func (m *UpdateInflationProposal) XXX_DiscardUnknown() {
+	xxx_messageInfo_UpdateInflationProposal.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_UpdateInflationProposal proto.InternalMessageInfo
+
+func (m *UpdateInflationProposal) GetTitle() string {
+	if m != nil {
+		return m.Title
+	}
+	return ""
+}
+
+func (m *UpdateInflationProposal) GetDescription() string {
+	if m != nil {
+		return m.Description
+	}
+	return ""
+}
+
+func (m *UpdateInflationProposal) GetPhase() string {
+	if m != nil {
+		return m.Phase
+	}
+	return ""
+}
+
+// MsgUpdateInflationRate is the Msg/UpdateInflationRate request type
+type MsgUpdateInflationRate struct {
+	// authority is the address that controls the module (defaults to x/gov unless overwritten)
+	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	// phase is the supply phase to update ("early", "growth", "mature", "post-cap")
+	Phase string `protobuf:"bytes,2,opt,name=phase,proto3" json:"phase,omitempty"`
+	// new_rate is the new inflation rate to set for the specified phase
+	NewRate cosmossdk_io_math.LegacyDec `protobuf:"bytes,3,opt,name=new_rate,json=newRate,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"new_rate"`
+}
+
+func (m *MsgUpdateInflationRate) Reset()         { *m = MsgUpdateInflationRate{} }
+func (m *MsgUpdateInflationRate) String() string { return proto.CompactTextString(m) }
+func (*MsgUpdateInflationRate) ProtoMessage()    {}
+func (*MsgUpdateInflationRate) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a0d933a8bf5e188a, []int{3}
+}
+func (m *MsgUpdateInflationRate) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgUpdateInflationRate) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgUpdateInflationRate.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgUpdateInflationRate) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgUpdateInflationRate.Merge(m, src)
+}
+func (m *MsgUpdateInflationRate) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgUpdateInflationRate) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgUpdateInflationRate.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgUpdateInflationRate proto.InternalMessageInfo
+
+func (m *MsgUpdateInflationRate) GetAuthority() string {
+	if m != nil {
+		return m.Authority
+	}
+	return ""
+}
+
+func (m *MsgUpdateInflationRate) GetPhase() string {
+	if m != nil {
+		return m.Phase
+	}
+	return ""
+}
+
+// MsgUpdateInflationRateResponse defines the response structure for executing a
+// MsgUpdateInflationRate message
+type MsgUpdateInflationRateResponse struct {
+}
+
+func (m *MsgUpdateInflationRateResponse) Reset()         { *m = MsgUpdateInflationRateResponse{} }
+func (m *MsgUpdateInflationRateResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgUpdateInflationRateResponse) ProtoMessage()    {}
+func (*MsgUpdateInflationRateResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_a0d933a8bf5e188a, []int{4}
+}
+func (m *MsgUpdateInflationRateResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *MsgUpdateInflationRateResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_MsgUpdateInflationRateResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *MsgUpdateInflationRateResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgUpdateInflationRateResponse.Merge(m, src)
+}
+func (m *MsgUpdateInflationRateResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *MsgUpdateInflationRateResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgUpdateInflationRateResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_MsgUpdateInflationRateResponse proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterType((*MsgUpdateParams)(nil), "cosmos.mint.v1beta1.MsgUpdateParams")
 	proto.RegisterType((*MsgUpdateParamsResponse)(nil), "cosmos.mint.v1beta1.MsgUpdateParamsResponse")
+	proto.RegisterType((*UpdateInflationProposal)(nil), "cosmos.mint.v1beta1.UpdateInflationProposal")
+	proto.RegisterType((*MsgUpdateInflationRate)(nil), "cosmos.mint.v1beta1.MsgUpdateInflationRate")
+	proto.RegisterType((*MsgUpdateInflationRateResponse)(nil), "cosmos.mint.v1beta1.MsgUpdateInflationRateResponse")
 }
 
 func init() { proto.RegisterFile("cosmos/mint/v1beta1/tx.proto", fileDescriptor_a0d933a8bf5e188a) }
 
 var fileDescriptor_a0d933a8bf5e188a = []byte{
-	// 343 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x92, 0x49, 0xce, 0x2f, 0xce,
-	0xcd, 0x2f, 0xd6, 0xcf, 0xcd, 0xcc, 0x2b, 0xd1, 0x2f, 0x33, 0x4c, 0x4a, 0x2d, 0x49, 0x34, 0xd4,
-	0x2f, 0xa9, 0xd0, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x12, 0x86, 0xc8, 0xea, 0x81, 0x64, 0xf5,
-	0xa0, 0xb2, 0x52, 0xe2, 0x30, 0x2d, 0xc5, 0xe9, 0xfa, 0x65, 0x86, 0x20, 0x0a, 0xa2, 0x5a, 0x4a,
-	0x30, 0x31, 0x37, 0x33, 0x2f, 0x5f, 0x1f, 0x4c, 0x42, 0x85, 0xe4, 0xb0, 0x19, 0x0f, 0x36, 0x0d,
-	0x22, 0x2f, 0x92, 0x9e, 0x9f, 0x9e, 0x0f, 0x66, 0xea, 0x83, 0x58, 0x50, 0x51, 0x49, 0x88, 0xae,
-	0x78, 0x88, 0x04, 0xd4, 0x0d, 0x60, 0x8e, 0xd2, 0x7e, 0x46, 0x2e, 0x7e, 0xdf, 0xe2, 0xf4, 0xd0,
-	0x82, 0x94, 0xc4, 0x92, 0xd4, 0x80, 0xc4, 0xa2, 0xc4, 0xdc, 0x62, 0x21, 0x33, 0x2e, 0xce, 0xc4,
-	0xd2, 0x92, 0x8c, 0xfc, 0xa2, 0xcc, 0x92, 0x4a, 0x09, 0x46, 0x05, 0x46, 0x0d, 0x4e, 0x27, 0x89,
-	0x4b, 0x5b, 0x74, 0x45, 0xa0, 0x1a, 0x1d, 0x53, 0x52, 0x8a, 0x52, 0x8b, 0x8b, 0x83, 0x4b, 0x8a,
-	0x32, 0xf3, 0xd2, 0x83, 0x10, 0x4a, 0x85, 0xec, 0xb8, 0xd8, 0x0a, 0xc0, 0x26, 0x48, 0x30, 0x29,
-	0x30, 0x6a, 0x70, 0x1b, 0x49, 0xeb, 0x61, 0xf1, 0xae, 0x1e, 0xc4, 0x12, 0x27, 0xce, 0x13, 0xf7,
-	0xe4, 0x19, 0x56, 0x3c, 0xdf, 0xa0, 0xc5, 0x18, 0x04, 0xd5, 0x65, 0x65, 0xd2, 0xf4, 0x7c, 0x83,
-	0x16, 0xc2, 0xbc, 0xae, 0xe7, 0x1b, 0xb4, 0x14, 0x21, 0x26, 0xe8, 0x16, 0xa7, 0x64, 0xeb, 0x57,
-	0x40, 0x7c, 0x8d, 0xe6, 0x5a, 0x25, 0x49, 0x2e, 0x71, 0x34, 0xa1, 0xa0, 0xd4, 0xe2, 0x82, 0xfc,
-	0xbc, 0xe2, 0x54, 0xa3, 0x02, 0x2e, 0x66, 0xdf, 0xe2, 0x74, 0xa1, 0x24, 0x2e, 0x1e, 0x14, 0xff,
-	0xa9, 0x60, 0x75, 0x17, 0x9a, 0x21, 0x52, 0x3a, 0xc4, 0xa8, 0x82, 0x59, 0x25, 0xc5, 0xda, 0x00,
-	0xf2, 0x8a, 0x93, 0xf3, 0x89, 0x47, 0x72, 0x8c, 0x17, 0x1e, 0xc9, 0x31, 0x3e, 0x78, 0x24, 0xc7,
-	0x38, 0xe1, 0xb1, 0x1c, 0xc3, 0x85, 0xc7, 0x72, 0x0c, 0x37, 0x1e, 0xcb, 0x31, 0x44, 0x69, 0xa6,
-	0x67, 0x96, 0x64, 0x94, 0x26, 0xe9, 0x25, 0xe7, 0xe7, 0x42, 0x63, 0x40, 0x1f, 0xd3, 0x6f, 0x25,
-	0x95, 0x05, 0xa9, 0xc5, 0x49, 0x6c, 0xe0, 0xa8, 0x31, 0x06, 0x04, 0x00, 0x00, 0xff, 0xff, 0x13,
-	0x9e, 0x4f, 0xda, 0x4c, 0x02, 0x00, 0x00,
+	// 548 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x54, 0x31, 0x6f, 0xd3, 0x40,
+	0x14, 0xce, 0x35, 0xb4, 0x90, 0x2b, 0x12, 0xc2, 0x8d, 0x48, 0xea, 0x22, 0x37, 0x18, 0x86, 0x12,
+	0x88, 0xad, 0xb4, 0x88, 0xa1, 0x43, 0x25, 0x52, 0x18, 0x90, 0xa8, 0x54, 0x19, 0xb1, 0xb0, 0x54,
+	0x17, 0xfb, 0x70, 0xac, 0xc6, 0x77, 0x96, 0xef, 0x35, 0x69, 0x36, 0xc4, 0xc8, 0xc4, 0xcf, 0x60,
+	0xcc, 0xd0, 0x9d, 0xb5, 0x62, 0xaa, 0x98, 0x10, 0x42, 0x15, 0x4a, 0x86, 0x88, 0x85, 0xdf, 0x80,
+	0xce, 0xe7, 0xa4, 0x6d, 0x70, 0x81, 0x76, 0xb1, 0x7d, 0xef, 0x7b, 0xef, 0x7b, 0xfe, 0xbe, 0x7b,
+	0x77, 0xf8, 0xb6, 0xcb, 0x45, 0xc8, 0x85, 0x1d, 0x06, 0x0c, 0xec, 0x4e, 0xbd, 0x49, 0x81, 0xd4,
+	0x6d, 0xd8, 0xb7, 0xa2, 0x98, 0x03, 0xd7, 0x16, 0x14, 0x6a, 0x49, 0xd4, 0x4a, 0x51, 0xfd, 0x26,
+	0x09, 0x03, 0xc6, 0xed, 0xe4, 0xa9, 0xf2, 0x74, 0x23, 0x8b, 0x25, 0x29, 0x52, 0x78, 0x69, 0x8c,
+	0x0b, 0xdf, 0xee, 0xd4, 0xe5, 0x2b, 0x05, 0x16, 0x15, 0xb0, 0x93, 0xac, 0xec, 0xb4, 0x9b, 0x82,
+	0x8a, 0x3e, 0xf7, 0xb9, 0x8a, 0xcb, 0x2f, 0x15, 0x35, 0x3f, 0x21, 0x7c, 0x63, 0x4b, 0xf8, 0xaf,
+	0x22, 0x8f, 0x00, 0xdd, 0x26, 0x31, 0x09, 0x85, 0xf6, 0x18, 0x17, 0xc8, 0x1e, 0xb4, 0x78, 0x1c,
+	0x40, 0xaf, 0x8c, 0x2a, 0x68, 0xa5, 0xd0, 0x28, 0x7f, 0x39, 0xa8, 0x15, 0x53, 0xba, 0x27, 0x9e,
+	0x17, 0x53, 0x21, 0x5e, 0x42, 0x1c, 0x30, 0xdf, 0x39, 0x49, 0xd5, 0x36, 0xf0, 0x5c, 0x94, 0x30,
+	0x94, 0x67, 0x2a, 0x68, 0x65, 0x7e, 0x75, 0xc9, 0xca, 0x90, 0x6b, 0xa9, 0x26, 0x8d, 0xc2, 0xe1,
+	0xf1, 0x72, 0xee, 0xe3, 0xa8, 0x5f, 0x45, 0x4e, 0x5a, 0xb5, 0xfe, 0xe8, 0xdd, 0xa8, 0x5f, 0x3d,
+	0xe1, 0x7b, 0x3f, 0xea, 0x57, 0xef, 0x28, 0x86, 0x9a, 0xf0, 0x76, 0xed, 0x7d, 0x65, 0xc7, 0xd4,
+	0xdf, 0x9a, 0x8b, 0xb8, 0x34, 0x15, 0x72, 0xa8, 0x88, 0x38, 0x13, 0xd4, 0xfc, 0x85, 0x70, 0x49,
+	0x01, 0xcf, 0xd9, 0x9b, 0x36, 0x81, 0x80, 0xb3, 0xed, 0x98, 0x47, 0x5c, 0x90, 0xb6, 0x56, 0xc4,
+	0xb3, 0x10, 0x40, 0x9b, 0x2a, 0x81, 0x8e, 0x5a, 0x68, 0x15, 0x3c, 0xef, 0x51, 0xe1, 0xc6, 0x41,
+	0x24, 0x93, 0x13, 0x1d, 0x05, 0xe7, 0x74, 0x48, 0xd6, 0x45, 0x2d, 0x22, 0x68, 0x39, 0xaf, 0xea,
+	0x92, 0x85, 0xb6, 0x81, 0xaf, 0x31, 0xda, 0xdd, 0x89, 0x09, 0xd0, 0xf2, 0x95, 0xc4, 0xb1, 0xbb,
+	0x52, 0xdf, 0xb7, 0xe3, 0xe5, 0x25, 0xa5, 0x40, 0x78, 0xbb, 0x56, 0xc0, 0xed, 0x90, 0x40, 0xcb,
+	0x7a, 0x41, 0x7d, 0xe2, 0xf6, 0x9e, 0x52, 0xd7, 0xb9, 0xca, 0x68, 0xd7, 0x21, 0x40, 0xd7, 0x9f,
+	0x7d, 0x3e, 0xa8, 0xe9, 0xa9, 0x5b, 0x3e, 0xef, 0x4c, 0xcc, 0xda, 0xe4, 0x0c, 0x28, 0x03, 0x69,
+	0x85, 0x79, 0xca, 0x8a, 0x73, 0x44, 0x99, 0xdf, 0x11, 0xbe, 0x35, 0x31, 0x63, 0x02, 0xcb, 0x0e,
+	0x97, 0xde, 0xd4, 0x89, 0xde, 0x99, 0xf3, 0xf4, 0xe6, 0x2f, 0xa1, 0xf7, 0x1f, 0x5b, 0x9d, 0xad,
+	0xc1, 0xac, 0x60, 0x23, 0x1b, 0x19, 0xef, 0xf8, 0xea, 0x4f, 0x84, 0xf3, 0x5b, 0xc2, 0xd7, 0x9a,
+	0xf8, 0xfa, 0x99, 0x91, 0xbe, 0x97, 0x39, 0x8a, 0x53, 0x73, 0xa3, 0x3f, 0xfc, 0x9f, 0xac, 0x71,
+	0x2f, 0xad, 0x8b, 0x17, 0xb2, 0x8c, 0x7e, 0xf0, 0x77, 0x92, 0x33, 0xc9, 0xfa, 0xda, 0x05, 0x92,
+	0xc7, 0x8d, 0xf5, 0xd9, 0xb7, 0xf2, 0xd8, 0x34, 0x36, 0x0f, 0x07, 0x06, 0x3a, 0x1a, 0x18, 0xe8,
+	0xc7, 0xc0, 0x40, 0x1f, 0x86, 0x46, 0xee, 0x68, 0x68, 0xe4, 0xbe, 0x0e, 0x8d, 0xdc, 0xeb, 0xfb,
+	0x7e, 0x00, 0xad, 0xbd, 0xa6, 0xe5, 0xf2, 0x30, 0xbd, 0x03, 0xec, 0x3f, 0xcf, 0x11, 0xf4, 0x22,
+	0x2a, 0x9a, 0x73, 0xc9, 0x35, 0xb0, 0xf6, 0x3b, 0x00, 0x00, 0xff, 0xff, 0x00, 0xdc, 0x11, 0x38,
+	0xb8, 0x04, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -180,6 +356,9 @@ type MsgClient interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(ctx context.Context, in *MsgUpdateParams, opts ...grpc.CallOption) (*MsgUpdateParamsResponse, error)
+	// UpdateInflationRate defines a governance operation for updating an inflation rate
+	// for a specific supply phase.
+	UpdateInflationRate(ctx context.Context, in *MsgUpdateInflationRate, opts ...grpc.CallOption) (*MsgUpdateInflationRateResponse, error)
 }
 
 type msgClient struct {
@@ -199,6 +378,15 @@ func (c *msgClient) UpdateParams(ctx context.Context, in *MsgUpdateParams, opts 
 	return out, nil
 }
 
+func (c *msgClient) UpdateInflationRate(ctx context.Context, in *MsgUpdateInflationRate, opts ...grpc.CallOption) (*MsgUpdateInflationRateResponse, error) {
+	out := new(MsgUpdateInflationRateResponse)
+	err := c.cc.Invoke(ctx, "/cosmos.mint.v1beta1.Msg/UpdateInflationRate", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MsgServer is the server API for Msg service.
 type MsgServer interface {
 	// UpdateParams defines a governance operation for updating the x/mint module
@@ -206,6 +394,9 @@ type MsgServer interface {
 	//
 	// Since: cosmos-sdk 0.47
 	UpdateParams(context.Context, *MsgUpdateParams) (*MsgUpdateParamsResponse, error)
+	// UpdateInflationRate defines a governance operation for updating an inflation rate
+	// for a specific supply phase.
+	UpdateInflationRate(context.Context, *MsgUpdateInflationRate) (*MsgUpdateInflationRateResponse, error)
 }
 
 // UnimplementedMsgServer can be embedded to have forward compatible implementations.
@@ -214,6 +405,9 @@ type UnimplementedMsgServer struct {
 
 func (*UnimplementedMsgServer) UpdateParams(ctx context.Context, req *MsgUpdateParams) (*MsgUpdateParamsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateParams not implemented")
+}
+func (*UnimplementedMsgServer) UpdateInflationRate(ctx context.Context, req *MsgUpdateInflationRate) (*MsgUpdateInflationRateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateInflationRate not implemented")
 }
 
 func RegisterMsgServer(s grpc1.Server, srv MsgServer) {
@@ -238,6 +432,24 @@ func _Msg_UpdateParams_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Msg_UpdateInflationRate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgUpdateInflationRate)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MsgServer).UpdateInflationRate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/cosmos.mint.v1beta1.Msg/UpdateInflationRate",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MsgServer).UpdateInflationRate(ctx, req.(*MsgUpdateInflationRate))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var _Msg_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "cosmos.mint.v1beta1.Msg",
 	HandlerType: (*MsgServer)(nil),
@@ -245,6 +457,10 @@ var _Msg_serviceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateParams",
 			Handler:    _Msg_UpdateParams_Handler,
+		},
+		{
+			MethodName: "UpdateInflationRate",
+			Handler:    _Msg_UpdateInflationRate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -314,6 +530,130 @@ func (m *MsgUpdateParamsResponse) MarshalToSizedBuffer(dAtA []byte) (int, error)
 	return len(dAtA) - i, nil
 }
 
+func (m *UpdateInflationProposal) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *UpdateInflationProposal) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *UpdateInflationProposal) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	{
+		size := m.NewRate.Size()
+		i -= size
+		if _, err := m.NewRate.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintTx(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
+	if len(m.Phase) > 0 {
+		i -= len(m.Phase)
+		copy(dAtA[i:], m.Phase)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Phase)))
+		i--
+		dAtA[i] = 0x1a
+	}
+	if len(m.Description) > 0 {
+		i -= len(m.Description)
+		copy(dAtA[i:], m.Description)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Description)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Title) > 0 {
+		i -= len(m.Title)
+		copy(dAtA[i:], m.Title)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Title)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgUpdateInflationRate) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgUpdateInflationRate) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgUpdateInflationRate) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	{
+		size := m.NewRate.Size()
+		i -= size
+		if _, err := m.NewRate.MarshalTo(dAtA[i:]); err != nil {
+			return 0, err
+		}
+		i = encodeVarintTx(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x1a
+	if len(m.Phase) > 0 {
+		i -= len(m.Phase)
+		copy(dAtA[i:], m.Phase)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Phase)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Authority) > 0 {
+		i -= len(m.Authority)
+		copy(dAtA[i:], m.Authority)
+		i = encodeVarintTx(dAtA, i, uint64(len(m.Authority)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *MsgUpdateInflationRateResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *MsgUpdateInflationRateResponse) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *MsgUpdateInflationRateResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintTx(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTx(v)
 	base := offset
@@ -341,6 +681,57 @@ func (m *MsgUpdateParams) Size() (n int) {
 }
 
 func (m *MsgUpdateParamsResponse) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	return n
+}
+
+func (m *UpdateInflationProposal) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Title)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.Description)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.Phase)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = m.NewRate.Size()
+	n += 1 + l + sovTx(uint64(l))
+	return n
+}
+
+func (m *MsgUpdateInflationRate) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Authority)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = len(m.Phase)
+	if l > 0 {
+		n += 1 + l + sovTx(uint64(l))
+	}
+	l = m.NewRate.Size()
+	n += 1 + l + sovTx(uint64(l))
+	return n
+}
+
+func (m *MsgUpdateInflationRateResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -497,6 +888,384 @@ func (m *MsgUpdateParamsResponse) Unmarshal(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: MsgUpdateParamsResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *UpdateInflationProposal) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: UpdateInflationProposal: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: UpdateInflationProposal: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Title", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Title = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Description", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Description = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Phase", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Phase = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewRate", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.NewRate.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgUpdateInflationRate) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgUpdateInflationRate: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgUpdateInflationRate: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Authority", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Authority = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Phase", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Phase = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewRate", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowTx
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthTx
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthTx
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.NewRate.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipTx(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthTx
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *MsgUpdateInflationRateResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowTx
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: MsgUpdateInflationRateResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: MsgUpdateInflationRateResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:

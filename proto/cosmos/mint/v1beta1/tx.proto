@@ -1,13 +1,13 @@
 syntax = "proto3";
 package cosmos.mint.v1beta1;
 
-option go_package = "github.com/cosmos/cosmos-sdk/x/mint/types";
-
-import "cosmos/msg/v1/msg.proto";
 import "amino/amino.proto";
 import "cosmos/mint/v1beta1/mint.proto";
-import "gogoproto/gogo.proto";
+import "cosmos/msg/v1/msg.proto";
 import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "github.com/cosmos/cosmos-sdk/x/mint/types";
 
 // Msg defines the x/mint Msg service.
 service Msg {
@@ -18,6 +18,10 @@ service Msg {
   //
   // Since: cosmos-sdk 0.47
   rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  // UpdateInflationRate defines a governance operation for updating an inflation rate
+  // for a specific supply phase.
+  rpc UpdateInflationRate(MsgUpdateInflationRate) returns (MsgUpdateInflationRateResponse);
 }
 
 // MsgUpdateParams is the Msg/UpdateParams request type.
@@ -41,3 +45,34 @@ message MsgUpdateParams {
 //
 // Since: cosmos-sdk 0.47
 message MsgUpdateParamsResponse {}
+
+// UpdateInflationProposal defines a governance proposal to update
+// an inflation rate for a specific supply phase
+message UpdateInflationProposal {
+  option (cosmos_proto.implements_interface) = "cosmos.gov.v1beta1.Content";
+  option (amino.name)                        = "cosmos-sdk/UpdateInflationProposal";
+
+  string title       = 1;
+  string description = 2;
+  string phase       = 3; // "early", "growth", "mature", "post-cap"
+  string new_rate    = 4 [(gogoproto.customtype) = "cosmossdk.io/math.LegacyDec", (gogoproto.nullable) = false];
+}
+
+// MsgUpdateInflationRate is the Msg/UpdateInflationRate request type
+message MsgUpdateInflationRate {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (amino.name)           = "cosmos-sdk/MsgUpdateInflationRate";
+
+  // authority is the address that controls the module (defaults to x/gov unless overwritten)
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+
+  // phase is the supply phase to update ("early", "growth", "mature", "post-cap")
+  string phase = 2;
+
+  // new_rate is the new inflation rate to set for the specified phase
+  string new_rate = 3 [(gogoproto.customtype) = "cosmossdk.io/math.LegacyDec", (gogoproto.nullable) = false];
+}
+
+// MsgUpdateInflationRateResponse defines the response structure for executing a
+// MsgUpdateInflationRate message
+message MsgUpdateInflationRateResponse {}

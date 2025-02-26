@@ -77,10 +77,15 @@ func (k Keeper) Logger(ctx context.Context) log.Logger {
 	return sdkCtx.Logger().With("module", "x/"+types.ModuleName)
 }
 
-// StakingTokenSupply implements an alias call to the underlying staking keeper's
-// StakingTokenSupply to be used in BeginBlocker.
-func (k Keeper) StakingTokenSupply(ctx context.Context) (math.Int, error) {
-	return k.stakingKeeper.StakingTokenSupply(ctx)
+// TotalHeliosSupply implements an alias call to the underlying staking keeper's
+// TotalHeliosSupply to be used in BeginBlocker.
+func (k Keeper) TotalHeliosSupply(ctx context.Context) (math.Int, error) {
+	return k.stakingKeeper.TotalHeliosSupply(ctx)
+}
+
+// HeliosDenom retrieves the denomination of the Helios token used in the minting process.
+func (k Keeper) HeliosDenom(ctx context.Context) (string, error) {
+	return k.stakingKeeper.HeliosDenom(ctx)
 }
 
 // BondedRatio implements an alias call to the underlying staking keeper's
