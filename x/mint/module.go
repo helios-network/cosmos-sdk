@@ -108,6 +108,7 @@ func NewAppModule(
 
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
+		authKeeper:     ak,
 		keeper:         keeper,
 		legacySubspace: ss,
 	}
