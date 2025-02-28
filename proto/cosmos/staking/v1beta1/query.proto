@@ -428,5 +428,6 @@ message QueryShareRepartitionMapRequest {
 
 message QueryShareRepartitionMapResponse {
   // sharesRepartitionMap defines all the repartition shares info of the network.
-  map<string, SharesRepartition> shares_repartition_map = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  map<string, SharesRepartition> shares_repartition_map = 1
+      [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }

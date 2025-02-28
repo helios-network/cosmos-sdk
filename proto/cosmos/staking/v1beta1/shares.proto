@@ -12,14 +12,14 @@ import "amino/amino.proto";
 message SharesRepartition {
   option (gogoproto.equal) = true; // Enable the Equal method generation
 
-  string denom = 1;            // Asset denomination (e.g., USDT, DAI)
+  string denom            = 1; // Asset denomination (e.g., USDT, DAI)
   string contract_address = 2; // Smart contract address of the asset
-  uint64 base_weight = 3;      // Base weight for rewards calculation
+  uint64 base_weight      = 3; // Base weight for rewards calculation
   // Total shares staked in the network
   string network_shares = 4 [
     (cosmos_proto.scalar)  = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable)   = false
   ];
-  string network_percentage_securisation = 5;   // Percentage of network securized by the asset share
+  string network_percentage_securisation = 5; // Percentage of network securized by the asset share
 }

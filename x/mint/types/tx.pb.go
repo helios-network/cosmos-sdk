@@ -140,7 +140,6 @@ type UpdateInflationProposal struct {
 	NewRate     cosmossdk_io_math.LegacyDec `protobuf:"bytes,4,opt,name=new_rate,json=newRate,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"new_rate"`
 }
 
-
 func (m *UpdateInflationProposal) Reset()         { *m = UpdateInflationProposal{} }
 func (m *UpdateInflationProposal) String() string { return proto.CompactTextString(m) }
 func (*UpdateInflationProposal) ProtoMessage()    {}

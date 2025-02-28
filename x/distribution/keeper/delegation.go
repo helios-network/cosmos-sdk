@@ -45,25 +45,25 @@ func (k Keeper) initializeDelegation(ctx context.Context, val sdk.ValAddress, de
 }
 
 // calculate the rewards accrued by a delegation between two periods
+// calculateDelegationRewardsBetween calculates rewards for a delegation
 func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val stakingtypes.ValidatorI,
-	startingPeriod, endingPeriod uint64, stake math.LegacyDec,
+	startingPeriod, endingPeriod uint64, delegationShares math.LegacyDec,
 ) (sdk.DecCoins, error) {
-	// sanity check
+	// Existing sanity checks
 	if startingPeriod > endingPeriod {
-		panic("startingPeriod cannot be greater than endingPeriod")
+		return sdk.DecCoins{}, fmt.Errorf("startingPeriod cannot be greater than endingPeriod")
 	}
 
-	// sanity check
-	if stake.IsNegative() {
-		panic("stake should not be negative")
+	if delegationShares.IsNegative() {
+		return sdk.DecCoins{}, fmt.Errorf("delegationShares should not be negative")
 	}
 
+	// Get validator's historical rewards
 	valBz, err := k.stakingKeeper.ValidatorAddressCodec().StringToBytes(val.GetOperator())
 	if err != nil {
-		panic(err)
+		return sdk.DecCoins{}, err
 	}
 
-	// return staking * (ending - starting)
 	starting, err := k.GetValidatorHistoricalRewards(ctx, valBz, startingPeriod)
 	if err != nil {
 		return sdk.DecCoins{}, err
@@ -76,11 +76,75 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 
 	difference := ending.CumulativeRewardRatio.Sub(starting.CumulativeRewardRatio)
 	if difference.IsAnyNegative() {
-		panic("negative rewards should not be possible")
+		return sdk.DecCoins{}, fmt.Errorf("negative rewards should not be possible")
 	}
-	// note: necessary to truncate so we don't allow withdrawing more rewards than owed
-	//TODO: reduce weighted amount if > 5%-10% by governance
-	rewards := difference.MulDecTruncate(stake)
+
+	// Convert delegation shares to tokens directly using validator's method
+	delegationTokens := val.TokensFromShares(delegationShares)
+
+	// Get total staked tokens in the network
+	totalNetworkStake, err := k.stakingKeeper.TotalBondedTokens(ctx)
+	if err != nil {
+		return sdk.DecCoins{}, err
+	}
+
+	// Check if stake reduction is enabled
+	stakingParams, err := k.stakingKeeper.GetParams(ctx)
+	if err != nil {
+		return sdk.DecCoins{}, err
+	}
+
+	// Calculate effective stake for this delegator
+	effectiveStake := delegationTokens
+
+	if stakingParams.DelegatorStakeReduction != nil && stakingParams.DelegatorStakeReduction.Enabled {
+		// Create adjusted total network stake by subtracting this delegation's stake
+		adjustedNetworkStake := totalNetworkStake.Sub(delegationTokens.TruncateInt())
+
+		// Convert threshold to decimal for calculations, using adjusted network stake
+		networkThreshold := math.LegacyNewDecFromInt(adjustedNetworkStake).Mul(stakingParams.DelegatorStakeReduction.DominanceThreshold)
+
+		// Check if this delegation exceeds the network threshold
+		if delegationTokens.GT(networkThreshold) {
+			// Calculate excess amount above threshold
+			excess := delegationTokens.Sub(networkThreshold)
+
+			// Calculate reduction factor based on curve
+			excessPercentage := excess.Quo(math.LegacyNewDecFromInt(adjustedNetworkStake))
+
+			// Calculate reduction factor using our helper
+			steepnessParam := excessPercentage.Mul(stakingParams.DelegatorStakeReduction.CurveSteepness).Neg()
+			oneMinusExp := math.LegacyOneDec().Sub(expNeg(steepnessParam))
+
+			reductionFactor := stakingParams.DelegatorStakeReduction.MaxReduction.Mul(oneMinusExp)
+
+			// Apply reduction to excess only
+			reducedExcess := excess.Mul(math.LegacyOneDec().Sub(reductionFactor))
+			effectiveStake = networkThreshold.Add(reducedExcess)
+
+			// Log reduction for debugging
+			sdkCtx := sdk.UnwrapSDKContext(ctx)
+			sdkCtx.Logger().Debug(
+				"applied stake reduction for delegation rewards",
+				"validator", val.GetOperator(),
+				"original_stake", delegationTokens,
+				"effective_stake", effectiveStake,
+				"adjusted_network_stake", adjustedNetworkStake,
+				"reduction_factor", reductionFactor,
+			)
+		}
+	}
+
+	// Use effective stake for reward calculation
+	// Original calculation: rewards = difference.MulDecTruncate(delegationShares)
+	// New calculation: we need to maintain the same reward ratio but use effective stake
+
+	// Convert effective stake back to an effective share representation
+	// effectiveShares = (effectiveStake * totalShares) / totalTokens
+	effectiveShares := effectiveStake.Mul(val.GetDelegatorShares()).Quo(math.LegacyNewDecFromInt(val.GetTokens()))
+
+	// Calculate rewards based on effective shares
+	rewards := difference.MulDecTruncate(effectiveShares)
 	return rewards, nil
 }
 

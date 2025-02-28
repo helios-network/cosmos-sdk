@@ -360,6 +360,48 @@ message Params {
   ];
   // treasury_address defines the address that receives treasury funds
   string treasury_address = 7;
+
+  // delegator_stake_reduction defines parameters for delegator-level stake reduction mechanism
+  StakeReductionParams delegator_stake_reduction = 8 [
+    (gogoproto.nullable)   = true,
+    (amino.dont_omitempty) = true,
+    (gogoproto.moretags)   = "yaml:\"delegator_stake_reduction\""
+  ];
+}
+
+// StakeReductionParams defines the parameters for stake reduction mechanism
+message StakeReductionParams {
+  option (gogoproto.equal) = true;
+
+  // enabled determines if the stake reduction is active
+  bool enabled = 1 [(amino.dont_omitempty) = true];
+
+  // dominance_threshold is the percentage (e.g., 0.05 for 5%) threshold above which reduction begins
+  string dominance_threshold = 2 [
+    (gogoproto.moretags)   = "yaml:\"dominance_threshold\"",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable)   = false,
+    (amino.dont_omitempty) = true,
+    (cosmos_proto.scalar)  = "cosmos.Dec"
+  ];
+
+  // max_reduction is the maximum reduction percentage possible (e.g., 0.90 for 90%)
+  string max_reduction = 3 [
+    (gogoproto.moretags)   = "yaml:\"max_reduction\"",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable)   = false,
+    (amino.dont_omitempty) = true,
+    (cosmos_proto.scalar)  = "cosmos.Dec"
+  ];
+
+  // curve_steepness controls how quickly the reduction increases with excess stake
+  string curve_steepness = 4 [
+    (gogoproto.moretags)   = "yaml:\"curve_steepness\"",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable)   = false,
+    (amino.dont_omitempty) = true,
+    (cosmos_proto.scalar)  = "cosmos.Dec"
+  ];
 }
 
 // DelegationResponse is equivalent to Delegation except that it contains a
