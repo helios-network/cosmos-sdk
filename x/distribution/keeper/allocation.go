@@ -253,8 +253,8 @@ func (k Keeper) calculateEffectivePower(ctx context.Context, validator stakingty
 		thresholdPercentage := stakingParams.DelegatorStakeReduction.DominanceThreshold
 		networkThreshold := math.LegacyNewDecFromInt(adjustedNetworkStake).Mul(thresholdPercentage)
 
-		// Check if this delegation exceeds the adjusted network threshold
-		if delTokens.GT(networkThreshold) {
+		// Check if this delegation exceeds the adjusted network threshold and if the adjustedNetworkStake is greater than 0
+		if delTokens.GT(networkThreshold) && adjustedNetworkStake.GT(math.NewInt(0)) {
 			// Calculate excess amount above threshold
 			excess := delTokens.Sub(networkThreshold)
 
