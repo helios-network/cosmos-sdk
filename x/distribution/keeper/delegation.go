@@ -105,7 +105,7 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 		networkThreshold := math.LegacyNewDecFromInt(adjustedNetworkStake).Mul(stakingParams.DelegatorStakeReduction.DominanceThreshold)
 
 		// Check if this delegation exceeds the network threshold
-		if delegationTokens.GT(networkThreshold) {
+		if delegationTokens.GT(networkThreshold) && adjustedNetworkStake.GT(math.NewInt(0)) {
 			// Calculate excess amount above threshold
 			excess := delegationTokens.Sub(networkThreshold)
 
