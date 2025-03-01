@@ -14,10 +14,10 @@ import (
 
 // Staking params default values
 const (
-	// DefaultUnbondingTime reflects three weeks in seconds as the default
+	// DefaultUnbondingTime reflects 5 seconds
 	// unbonding time.
 	// TODO: Justify our choice of default here.
-	DefaultUnbondingTime time.Duration = time.Hour * 24 * 7 * 3
+	DefaultUnbondingTime time.Duration = time.Second * 5
 
 	// Default maximum number of bonded validators
 	DefaultMaxValidators uint32 = 100
@@ -29,22 +29,35 @@ const (
 	// value by not adding the staking module to the application module manager's
 	// SetOrderBeginBlockers.
 	DefaultHistoricalEntries uint32 = 10000
+
+	// `enabled`: Whether the Delegator Stake Reduction mechanism is active
+	DefaultDelegatorStakeReductionEnabled bool = true
 )
 
 var (
 	// DefaultMinCommissionRate is set to 0%
 	DefaultMinCommissionRate = math.LegacyZeroDec()
+
+	// `dominance_threshold`: Percentage threshold above which reduction begins
+	DefaultDelegatorStakeReductionDominanceThreshold math.LegacyDec = math.LegacyMustNewDecFromStr("0.05")
+
+	// `max_reduction`: Maximum possible reduction percentage
+	DefaultDelegatorStakeReductionMaxReduction math.LegacyDec = math.LegacyMustNewDecFromStr("0.90")
+
+	// `curve_steepness`: Controls how quickly reduction increases
+	DefaultDelegatorStakeReductionCurveSteepness math.LegacyDec = math.LegacyMustNewDecFromStr("10.0")
 )
 
 // NewParams creates a new Params instance
-func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historicalEntries uint32, bondDenom string, minCommissionRate math.LegacyDec) Params {
+func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historicalEntries uint32, bondDenom string, minCommissionRate math.LegacyDec, delegatorStakeReduction *StakeReductionParams) Params {
 	return Params{
-		UnbondingTime:     unbondingTime,
-		MaxValidators:     maxValidators,
-		MaxEntries:        maxEntries,
-		HistoricalEntries: historicalEntries,
-		BondDenom:         bondDenom,
-		MinCommissionRate: minCommissionRate,
+		UnbondingTime:           unbondingTime,
+		MaxValidators:           maxValidators,
+		MaxEntries:              maxEntries,
+		HistoricalEntries:       historicalEntries,
+		BondDenom:               bondDenom,
+		MinCommissionRate:       minCommissionRate,
+		DelegatorStakeReduction: delegatorStakeReduction,
 	}
 }
 
@@ -57,6 +70,12 @@ func DefaultParams() Params {
 		DefaultHistoricalEntries,
 		sdk.DefaultBondDenom,
 		DefaultMinCommissionRate,
+		&StakeReductionParams{
+			Enabled:            true,
+			DominanceThreshold: DefaultDelegatorStakeReductionDominanceThreshold,
+			MaxReduction:       DefaultDelegatorStakeReductionMaxReduction,
+			CurveSteepness:     DefaultDelegatorStakeReductionCurveSteepness,
+		},
 	)
 }
 
