@@ -12,6 +12,7 @@ import (
 // Default period for deposits & voting
 const (
 	DefaultPeriod                         time.Duration = time.Hour * 24 * 2 // 2 days
+	DefaultMaxDepositPeriod               time.Duration = time.Hour * 24 * 1 // 1 day
 	DefaultExpeditedPeriod                time.Duration = time.Hour * 24 * 1 // 1 day
 	DefaultMinExpeditedDepositTokensRatio               = 5
 )
@@ -24,7 +25,7 @@ var (
 	DefaultThreshold                 = sdkmath.LegacyNewDecWithPrec(5, 1)
 	DefaultExpeditedThreshold        = sdkmath.LegacyNewDecWithPrec(667, 3)
 	DefaultVetoThreshold             = sdkmath.LegacyNewDecWithPrec(334, 3)
-	DefaultMinInitialDepositRatio    = sdkmath.LegacyZeroDec()
+	DefaultMinInitialDepositRatio    = sdkmath.LegacyNewDecWithPrec(1, 1) // 0.1
 	DefaultProposalCancelRatio       = sdkmath.LegacyMustNewDecFromStr("0.5")
 	DefaultProposalCancelDestAddress = ""
 	DefaultBurnProposalPrevote       = false // set to false to replicate behavior of when this change was made (0.47)
@@ -88,7 +89,7 @@ func DefaultParams() Params {
 	return NewParams(
 		sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, DefaultMinDepositTokens)),
 		sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, DefaultMinExpeditedDepositTokens)),
-		DefaultPeriod,
+		DefaultMaxDepositPeriod,
 		DefaultPeriod,
 		DefaultExpeditedPeriod,
 		DefaultQuorum.String(),
