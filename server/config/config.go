@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	defaultMinGasPrices = ""
+	// defaultMinGasPrices define the minimum gasPrice accepted by the current node to add a new tx in his txpool.
+	defaultMinGasPrices = "0.1ahelios"
 
 	// DefaultAPIAddress defines the default address to bind the API server to.
 	DefaultAPIAddress = "tcp://localhost:1317"
