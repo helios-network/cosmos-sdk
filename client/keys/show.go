@@ -21,6 +21,8 @@ import (
 const (
 	// FlagAddress is the flag for the user's address on the command line.
 	FlagAddress = "address"
+	// FlagPublicKey is the flag for the user's ethereum address on the command line.
+	FlagEthereumAddress = "ethereumAddress"
 	// FlagPublicKey represents the user's public key on the command line.
 	FlagPublicKey = "pubkey"
 	// FlagBechPrefix defines a desired Bech32 prefix encoding for a key.
@@ -45,6 +47,7 @@ consisting of all the keys provided by name and multisig threshold.`,
 	f := cmd.Flags()
 	f.String(FlagBechPrefix, sdk.PrefixAccount, "The Bech32 prefix encoding for a key (acc|val|cons)")
 	f.BoolP(FlagAddress, "a", false, "Output the address only (cannot be used with --output)")
+	f.BoolP(FlagEthereumAddress, "e", false, "Output the ethereum address only (cannot be used with --output)")
 	f.BoolP(FlagPublicKey, "p", false, "Output the public key only (cannot be used with --output)")
 	f.BoolP(FlagDevice, "d", false, "Output the address in a ledger device (cannot be used with --pubkey)")
 	f.Int(flagMultiSigThreshold, 1, "K out of N required signatures")
@@ -93,6 +96,7 @@ func runShowCmd(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	isShowAddr, _ := cmd.Flags().GetBool(FlagAddress)
+	isShowEthereumAddr, _ := cmd.Flags().GetBool(FlagEthereumAddress)
 	isShowPubKey, _ := cmd.Flags().GetBool(FlagPublicKey)
 	isShowDevice, _ := cmd.Flags().GetBool(FlagDevice)
 
@@ -121,6 +125,16 @@ func runShowCmd(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	switch {
+	case isShowEthereumAddr:
+		ko, err := bechKeyOut(k)
+		if err != nil {
+			return err
+		}
+		out := ko.AddressEthereum
+
+		if _, err := fmt.Fprintln(cmd.OutOrStdout(), out); err != nil {
+			return err
+		}
 	case isShowAddr, isShowPubKey:
 		ko, err := bechKeyOut(k)
 		if err != nil {
