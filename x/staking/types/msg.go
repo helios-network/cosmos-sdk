@@ -84,6 +84,13 @@ func (msg MsgCreateValidator) Validate(ac address.Codec) error {
 		return ErrSelfDelegationBelowMinimum
 	}
 
+	if !msg.MinDelegation.IsPositive() {
+		return errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"minimum delegation must be a positive integer",
+		)
+	}
+
 	return nil
 }
 

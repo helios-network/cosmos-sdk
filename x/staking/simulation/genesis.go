@@ -45,6 +45,7 @@ func RandomizedGenState(simState *module.SimulationState) {
 		histEntries             uint32
 		minCommissionRate       sdkmath.LegacyDec
 		delegatorStakeReduction *types.StakeReductionParams
+		BoostPercentage         sdkmath.LegacyDec
 	)
 
 	simState.AppParams.GetOrGenerate(unbondingTime, &unbondTime, simState.Rand, func(r *rand.Rand) { unbondTime = genUnbondingTime(r) })
@@ -56,7 +57,7 @@ func RandomizedGenState(simState *module.SimulationState) {
 	// NOTE: the slashing module need to be defined after the staking module on the
 	// NewSimulationManager constructor for this to work
 	simState.UnbondTime = unbondTime
-	params := types.NewParams(simState.UnbondTime, maxVals, 7, histEntries, simState.BondDenom, minCommissionRate, delegatorStakeReduction, 85, 5, 10)
+	params := types.NewParams(simState.UnbondTime, maxVals, 7, histEntries, simState.BondDenom, minCommissionRate, delegatorStakeReduction, 85, 5, 10, BoostPercentage)
 
 	// validators & delegations
 	var (

@@ -145,7 +145,39 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 
 	// Calculate rewards based on effective shares
 	rewards := difference.MulDecTruncate(effectiveShares)
-	return rewards, nil
+
+	// --- Begin Boost Calculation ---
+	// Get total tokens staked by the validator.
+	totalStaked := math.LegacyNewDecFromInt(val.GetTokens())
+	if totalStaked.LTE(math.LegacyNewDecFromInt(math.NewInt(0))) {
+		totalStaked = math.LegacyNewDecFromInt(math.NewInt(1))
+	}
+
+	// Retrieve the total boosted delegation for the validator.
+	// (You need to implement GetTotalBoostedDelegation if not already available.)
+	boostedTotal, err := k.stakingKeeper.GetTotalBoostedDelegation(ctx, sdk.ValAddress(valBz))
+	if err != nil {
+		return sdk.DecCoins{}, err
+	}
+
+	// Calculate the boost ratio: proportion of boosted tokens relative to total staked tokens.
+	boostRatio := boostedTotal.Quo(totalStaked)
+	if boostRatio.GT(math.LegacyOneDec()) {
+		boostRatio = math.LegacyOneDec() // Clamp to 1 if it exceeds 100%
+	}
+
+	// Calculate the applied boost percentage.
+	// This is the boost ratio multiplied by the maximum boost percentage defined in genesis.
+	appliedBoost := boostRatio.Mul(stakingParams.BoostPercentage)
+
+	// Compute the multiplier to apply to rewards: 1 + appliedBoost.
+	multiplier := math.LegacyOneDec().Add(appliedBoost)
+
+	// Apply the multiplier to each reward coin.
+	finalRewards := rewards.MulDecTruncate(multiplier)
+	// --- End Boost Calculation ---
+
+	return finalRewards, nil
 }
 
 // calculate the total rewards accrued by a delegation

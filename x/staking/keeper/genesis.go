@@ -174,6 +174,28 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 		panic(fmt.Sprintf("not bonded pool balance is different from not bonded coins: %s <-> %s", notBondedBalance, notBondedCoins))
 	}
 
+	// Retrieve the boosted pool account
+	boostedPool := k.GetBoostedPool(ctx)
+	if boostedPool == nil {
+		panic(fmt.Sprintf("%s module account has not been set", types.BoostedPoolName))
+	}
+
+	// Get the balance of the boosted pool
+	boostedBalance := k.bankKeeper.GetAllBalances(ctx, boostedPool.GetAddress())
+	if boostedBalance.IsZero() {
+		// Initialize the module account if no balance is found
+		k.authKeeper.SetModuleAccount(ctx, boostedPool)
+	}
+
+	// Compute expected boosted tokens (adjust this logic as needed)
+	boostedTokens := math.ZeroInt() // Compute the expected boosted tokens here
+	boostedCoins := sdk.NewCoins(sdk.NewCoin(data.Params.BondDenom, boostedTokens))
+
+	// Verify that the boosted pool balance matches the expected boosted coins
+	if !boostedBalance.Equal(boostedCoins) {
+		panic(fmt.Sprintf("boosted pool balance is different from boosted coins: %s <-> %s", boostedBalance, boostedCoins))
+	}
+
 	// don't need to run CometBFT updates if we exported
 	if data.Exported {
 		for _, lv := range data.LastValidatorPowers {
@@ -266,6 +288,7 @@ func (k Keeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 		panic(err)
 	}
 
+	// TODO: add boosted pool here
 	return &types.GenesisState{
 		Params:               params,
 		LastTotalPower:       totalPower,

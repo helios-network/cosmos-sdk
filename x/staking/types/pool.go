@@ -12,6 +12,7 @@ import (
 const (
 	NotBondedPoolName = "not_bonded_tokens_pool"
 	BondedPoolName    = "bonded_tokens_pool"
+	BoostedPoolName   = "boosted_tokens_pool"
 )
 
 // NewPool creates a new Pool instance used for queries

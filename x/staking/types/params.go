@@ -50,6 +50,8 @@ var (
 
 	// `curve_steepness`: Controls how quickly reduction increases
 	DefaultDelegatorStakeReductionCurveSteepness math.LegacyDec = math.LegacyMustNewDecFromStr("10.0")
+
+	DefaultBoostPercentage math.LegacyDec = math.LegacyMustNewDecFromStr("0.15")
 )
 
 // NewParams creates a new Params instance
@@ -60,7 +62,7 @@ func NewParams(
 	minCommissionRate math.LegacyDec,
 	delegatorStakeReduction *StakeReductionParams,
 	// New parameters
-	stakeWeightFactor, baselineChanceFactor, randomnessFactor uint64,
+	stakeWeightFactor, baselineChanceFactor, randomnessFactor uint64, BoostPercentage math.LegacyDec,
 ) Params {
 	return Params{
 		UnbondingTime:           unbondingTime,
@@ -73,6 +75,7 @@ func NewParams(
 		StakeWeightFactor:       stakeWeightFactor,
 		BaselineChanceFactor:    baselineChanceFactor,
 		RandomnessFactor:        randomnessFactor,
+		BoostPercentage:         BoostPercentage,
 	}
 }
 
@@ -91,10 +94,7 @@ func DefaultParams() Params {
 			MaxReduction:       DefaultDelegatorStakeReductionMaxReduction,
 			CurveSteepness:     DefaultDelegatorStakeReductionCurveSteepness,
 		},
-		// Add default values for new parameters
-		DefaultStakeWeightFactor,
-		DefaultBaselineChanceFactor,
-		DefaultRandomnessFactor,
+		DefaultBoostPercentage,
 	)
 }
 
