@@ -176,7 +176,7 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 		)
 	}
 
-	if msg.MinDelegation != nil && !msg.MinDelegation.IsPositive() {
+	if msg.MinDelegation != nil && msg.MinDelegation.LT(math.ZeroInt()) {
 		return nil, errorsmod.Wrap(
 			sdkerrors.ErrInvalidRequest,
 			"minimum delegation must be a positive integer",
@@ -242,6 +242,8 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 		validator.MinDelegation = *msg.MinDelegation
 	}
 
+	validator.DelegateAuthorization = *&msg.DelegateAuthorization
+
 	err = k.SetValidator(ctx, validator)
 	if err != nil {
 		return nil, err
@@ -263,6 +265,9 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types.MsgDelegateResponse, error) {
 
 	bondDenom, err := k.BondDenom(ctx)
+	if err != nil {
+		return nil, sdkerrors.ErrInvalidAddress.Wrapf("can't find the denom")
+	}
 
 	valAddr, valErr := k.validatorAddressCodec.StringToBytes(msg.ValidatorAddress)
 	if valErr != nil {
@@ -284,6 +289,10 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 	validator, err := k.GetValidator(ctx, valAddr)
 	if err != nil {
 		return nil, err
+	}
+
+	if msg.DelegatorAddress != msg.ValidatorAddress && !validator.DelegateAuthorization {
+		return nil, sdkerrors.ErrUnauthorized.Wrap("delegation not authorized: delegator is not the validator and delegate authorization is false")
 	}
 
 	var newShares = math.LegacyZeroDec()
@@ -413,11 +422,21 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid delegator address: %s", err)
 	}
 
+	validator, err := k.GetValidator(ctx, addr)
+	if err != nil {
+		return nil, sdkerrors.ErrInvalidAddress.Wrapf("validator not found: %s", err)
+	}
+
 	if !msg.Amount.IsValid() || !msg.Amount.Amount.IsPositive() {
 		return nil, errorsmod.Wrap(
 			sdkerrors.ErrInvalidRequest,
 			"invalid shares amount",
 		)
+	}
+
+	bondDenom, err := k.BondDenom(ctx)
+	if err != nil {
+		return nil, sdkerrors.ErrInvalidAddress.Wrapf("can't find the denom")
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -435,10 +454,19 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 		return nil, err
 	}
 
-	//todo: here switch to UndelegateBoost if de denom it's defaultdDnom (ahelios)
-	completionTime, undelegatedAmt, err := k.Keeper.Undelegate(ctx, delegatorAddress, addr, shares, msg.Amount.Denom, msg.Amount.Amount)
-	if err != nil {
-		return nil, err
+	undelegatedAmt := math.ZeroInt()
+	completionTime := time.Time{}
+
+	if msg.Amount.Denom == bondDenom {
+		completionTime, undelegatedAmt, err = k.Keeper.UnDelegateBoost(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, validator)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		completionTime, undelegatedAmt, err = k.Keeper.Undelegate(ctx, delegatorAddress, addr, shares, msg.Amount.Denom, msg.Amount.Amount)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	undelegatedCoin := sdk.NewCoin(msg.Amount.Denom, undelegatedAmt)

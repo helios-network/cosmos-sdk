@@ -100,6 +100,7 @@ message MsgEditValidator {
   string min_self_delegation = 4
       [(cosmos_proto.scalar) = "cosmos.Int", (gogoproto.customtype) = "cosmossdk.io/math.Int"];
   string min_delegation = 5 [(cosmos_proto.scalar) = "cosmos.Int", (gogoproto.customtype) = "cosmossdk.io/math.Int"];
+  bool   delegate_authorization = 6 [(amino.dont_omitempty) = true];
 }
 
 // MsgEditValidatorResponse defines the Msg/EditValidator response type.

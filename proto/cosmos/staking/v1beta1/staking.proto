@@ -160,6 +160,7 @@ message Validator {
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable)   = false
   ];
+  bool delegate_authorization = 15 [(amino.dont_omitempty) = true];
 }
 
 // BondStatus is the status of a validator.
