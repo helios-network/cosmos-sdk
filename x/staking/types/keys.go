@@ -26,6 +26,8 @@ const (
 )
 
 var (
+	PreviousEpochValidatorsKey  = []byte{0x01} // Prefix for storing validators active in previous epochs
+	ValidatorLastActiveEpochKey = []byte{0x02} // Prefix for storing the last epoch a validator was active
 	// Keys for store prefixes
 	// Last* values are constant during a block.
 	LastValidatorPowerKey = []byte{0x11} // prefix for each key to a validator index, for bonded validators

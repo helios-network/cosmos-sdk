@@ -755,3 +755,247 @@ func redelegationsToRedelegationResponses(ctx context.Context, k *Keeper, redels
 
 	return resp, nil
 }
+
+// EpochInfo returns current epoch information
+func (k Keeper) EpochInfo(ctx context.Context, req *types.QueryEpochInfoRequest) (*types.QueryEpochInfoResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	// Get epoch configuration and state
+	currentEpoch := k.GetCurrentEpoch(ctx)
+	epochLength := k.GetEpochLength(ctx)
+	lastEpochHeight := k.GetLastEpochHeight(ctx)
+	validatorsPerEpoch := k.GetValidatorsPerEpoch(ctx)
+	epochEnabled := k.IsEpochEnabled(ctx)
+
+	// Get current height
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := uint64(sdkCtx.BlockHeight())
+
+	// Calculate blocks until next epoch
+	var blocksUntilNextEpoch uint64
+	if lastEpochHeight > 0 && epochLength > 0 {
+		nextEpochHeight := lastEpochHeight + epochLength
+		if currentHeight < nextEpochHeight {
+			blocksUntilNextEpoch = nextEpochHeight - currentHeight
+		} else {
+			blocksUntilNextEpoch = 0 // We're at or past the next epoch height
+		}
+	} else {
+		blocksUntilNextEpoch = epochLength // First epoch
+	}
+
+	return &types.QueryEpochInfoResponse{
+		CurrentEpoch:         currentEpoch,
+		EpochLength:          epochLength,
+		LastEpochHeight:      lastEpochHeight,
+		ValidatorsPerEpoch:   validatorsPerEpoch,
+		EpochEnabled:         epochEnabled,
+		CurrentHeight:        currentHeight,
+		BlocksUntilNextEpoch: blocksUntilNextEpoch,
+	}, nil
+}
+
+func (k Keeper) GetEpochValidators(ctx context.Context, req *types.QueryEpochValidatorsRequest) (*types.QueryEpochValidatorsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Check if epoch is enabled
+	if !k.IsEpochEnabled(sdkCtx) {
+		return nil, status.Error(codes.FailedPrecondition, "epoch-based validator rotation is not enabled")
+	}
+
+	store := k.storeService.OpenKVStore(sdkCtx)
+
+	// Prepare response
+	var validators []types.Validator
+
+	// Manually handle iteration and pagination
+	iterator, err := store.Iterator(ActiveEpochValidatorsKey, append(ActiveEpochValidatorsKey, 0xFF))
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to fetch validators")
+	}
+	defer iterator.Close()
+
+	// Pagination setup
+	start, end := uint64(0), uint64(len(validators))
+	if req.Pagination != nil {
+		start = req.Pagination.Offset
+		end = start + req.Pagination.Limit
+	}
+
+	// Read and paginate manually
+	index := uint64(0)
+	for ; iterator.Valid(); iterator.Next() {
+		if index >= start && index < end {
+			// Extract validator address
+			valAddrStr := string(iterator.Value())
+
+			// Convert address to ValAddress
+			valAddr, err := sdk.ValAddressFromBech32(valAddrStr)
+			if err != nil {
+				continue // Skip invalid addresses
+			}
+
+			// Fetch full validator object
+			validator, err := k.GetValidator(sdkCtx, valAddr)
+			if err == nil { // Append only if found
+				validators = append(validators, validator)
+			}
+		}
+		index++
+		if index >= end {
+			break // Stop once we've reached the page limit
+		}
+	}
+
+	// Prepare pagination response
+	pageRes := &query.PageResponse{
+		NextKey: nil, // We do not track NextKey manually in this fix
+		Total:   uint64(len(validators)),
+	}
+
+	return &types.QueryEpochValidatorsResponse{
+		Validators: validators,
+		Pagination: pageRes,
+	}, nil
+}
+
+// GetPreviousEpochValidators returns the list of validators from the previous epoch
+func (k Keeper) GetPreviousEpochValidatorsHandler(ctx context.Context, req *types.QueryPreviousEpochValidatorsRequest) (*types.QueryPreviousEpochValidatorsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Check if epoch is enabled
+	if !k.IsEpochEnabled(sdkCtx) {
+		return nil, status.Error(codes.FailedPrecondition, "epoch-based validator rotation is not enabled")
+	}
+
+	store := k.storeService.OpenKVStore(sdkCtx)
+
+	// Prepare response
+	var validators []types.Validator
+
+	// Manually iterate over previously active validators
+	iterator, err := store.Iterator(PreviousEpochValidatorsKey, append(PreviousEpochValidatorsKey, 0xFF))
+	if err != nil {
+		return nil, status.Error(codes.Internal, "failed to fetch previous epoch validators")
+	}
+	defer iterator.Close()
+
+	// Pagination setup
+	start, end := uint64(0), uint64(len(validators))
+	if req.Pagination != nil {
+		start = req.Pagination.Offset
+		end = start + req.Pagination.Limit
+	}
+
+	// Read and paginate manually
+	index := uint64(0)
+	for ; iterator.Valid(); iterator.Next() {
+		if index >= start && index < end {
+			// Extract validator address
+			valAddrStr := string(iterator.Value())
+
+			// Convert address to ValAddress
+			valAddr, err := sdk.ValAddressFromBech32(valAddrStr)
+			if err != nil {
+				continue // Skip invalid addresses
+			}
+
+			// Fetch full validator object
+			validator, err := k.GetValidator(sdkCtx, valAddr)
+			if err == nil { // Append only if found
+				validators = append(validators, validator)
+			}
+		}
+		index++
+		if index >= end {
+			break // Stop once we've reached the page limit
+		}
+	}
+
+	// Prepare pagination response
+	pageRes := &query.PageResponse{
+		NextKey: nil, // We do not track NextKey manually in this fix
+		Total:   uint64(len(validators)),
+	}
+
+	return &types.QueryPreviousEpochValidatorsResponse{
+		Validators: validators,
+		Pagination: pageRes,
+	}, nil
+}
+
+// GetEpochLength returns the configured epoch length in blocks
+func (k Keeper) GetEpochLengthHandler(ctx context.Context, req *types.QueryEpochLengthRequest) (*types.QueryEpochLengthResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	epochLength := k.GetEpochLength(sdkCtx)
+
+	return &types.QueryEpochLengthResponse{
+		EpochLength: epochLength,
+	}, nil
+}
+
+// GetValidatorsPerEpoch returns the number of validators selected per epoch
+func (k Keeper) GetValidatorsPerEpochHandler(ctx context.Context, req *types.QueryValidatorsPerEpochRequest) (*types.QueryValidatorsPerEpochResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	validatorsPerEpoch := k.GetValidatorsPerEpoch(sdkCtx)
+
+	return &types.QueryValidatorsPerEpochResponse{
+		ValidatorsPerEpoch: validatorsPerEpoch,
+	}, nil
+}
+
+// IsEpochEnabled checks if epoch-based validator rotation is enabled
+func (k Keeper) GetIsEpochEnabledHandler(ctx context.Context, req *types.QueryIsEpochEnabledRequest) (*types.QueryIsEpochEnabledResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	enabled := k.IsEpochEnabled(sdkCtx)
+
+	return &types.QueryIsEpochEnabledResponse{
+		EpochEnabled: enabled,
+	}, nil
+}
+
+// GetCurrentEpochHandler returns current epoch information
+func (k Keeper) GetCurrentEpochHandler(ctx context.Context, req *types.QueryCurrentEpochRequest) (*types.QueryCurrentEpochResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Get all required information from the keeper
+	currentEpoch := k.GetCurrentEpoch(sdkCtx)
+	epochLength := k.GetEpochLength(sdkCtx)
+	lastEpochHeight := k.GetLastEpochHeight(sdkCtx)
+	validatorsPerEpoch := k.GetValidatorsPerEpoch(sdkCtx)
+	epochEnabled := k.IsEpochEnabled(sdkCtx)
+
+	return &types.QueryCurrentEpochResponse{
+		CurrentEpoch:       currentEpoch,
+		EpochLength:        epochLength,
+		LastEpochHeight:    lastEpochHeight,
+		ValidatorsPerEpoch: validatorsPerEpoch,
+		EpochEnabled:       epochEnabled,
+	}, nil
+}

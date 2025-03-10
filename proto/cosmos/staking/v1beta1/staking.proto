@@ -335,6 +335,7 @@ message Redelegation {
 }
 
 // Params defines the parameters for the x/staking module.
+// Params defines the parameters for the x/staking module.
 message Params {
   option (amino.name)      = "cosmos-sdk/x/staking/Params";
   option (gogoproto.equal) = true;
@@ -366,6 +367,27 @@ message Params {
     (gogoproto.nullable)   = true,
     (amino.dont_omitempty) = true,
     (gogoproto.moretags)   = "yaml:\"delegator_stake_reduction\""
+  ];
+
+  // epoch_length defines the number of blocks each epoch lasts
+  uint64 epoch_length = 9 [
+    (gogoproto.moretags)   = "yaml:\"epoch_length\"",
+    (amino.dont_omitempty) = true,
+    (gogoproto.jsontag)    = "epoch_length,omitempty"
+  ];
+
+  // validators_per_epoch defines the maximum number of validators that can be active in each epoch
+  int64 validators_per_epoch = 10 [
+    (gogoproto.moretags)   = "yaml:\"validators_per_epoch\"",
+    (amino.dont_omitempty) = true,
+    (gogoproto.jsontag)    = "validators_per_epoch,omitempty"
+  ];
+
+  // epoch_enabled defines whether the epoch-based validator rotation is enabled
+  bool epoch_enabled = 11 [
+    (gogoproto.moretags)   = "yaml:\"epoch_enabled\"",
+    (amino.dont_omitempty) = true,
+    (gogoproto.jsontag)    = "epoch_enabled,omitempty"
   ];
 }
 
