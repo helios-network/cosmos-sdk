@@ -155,7 +155,7 @@ service Query {
   }
 
   // GetEpochValidators returns the validators active in the current epoch
-  rpc GetEpochValidators(QueryEpochValidatorsRequest) returns (QueryEpochValidatorsResponse) {
+  rpc GetEpochValidatorsHandler(QueryEpochValidatorsRequest) returns (QueryEpochValidatorsResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/epoch_validators";
   }

@@ -44,30 +44,32 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 	if lastEpochHeight == 0 || currentHeight-lastEpochHeight >= epochLength {
 		// We're at an epoch boundary - complete validator set rotation
 		currentEpoch := k.GetCurrentEpoch(ctx)
+		k.Logger(ctx).Info("Epoch boundary reached", "epoch", currentEpoch, "height", currentHeight)
 
 		// Get all bonded validators - fetch once and reuse
 		allBondedValidators := k.GetAllBondedValidators(ctx)
 
-		// IMPROVEMENT 2: Fetch active validators once and reuse
+		// Fetch active validators once and reuse
 		currentlyActiveValidators := k.GetActiveValidatorsForCurrentEpoch(ctx)
 
-		// IMPROVEMENT 1: Get all previously active validators across epochs
+		// Get all previously active validators across epochs
 		allPreviouslyActiveValidators := k.GetAllPreviouslyActiveValidators(ctx)
 
 		// Select validators for the new epoch using improved selection
 		newEpochValidators := k.selectValidatorsForEpoch(ctx, allBondedValidators, validatorsPerEpoch)
+		k.Logger(ctx).Info("Selected validators for new epoch",
+			"count", len(newEpochValidators),
+			"total_eligible", len(allBondedValidators))
 
 		// Create updates for the complete validator set rotation
 		updates := make([]abci.ValidatorUpdate, 0)
 
-		// IMPROVEMENT 3: Track handled validators by operator address, not pubkey string
+		// Track handled validators by a string representation of their pubkey
 		handledValidators := make(map[string]bool)
 
 		// First handle regular updates (prioritize jailing/unbonding)
 		for _, update := range regularUpdates {
-			// Use a simple string representation of the pubkey as a unique identifier
 			pubkeyStr := fmt.Sprintf("%v", update.PubKey)
-
 			updates = append(updates, update)
 			handledValidators[pubkeyStr] = true
 		}
@@ -113,7 +115,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 			handledValidators[pubkeyStr] = true
 		}
 
-		// IMPROVEMENT: Track all previously active validators
+		// Track all previously active validators
 		k.StoreAllPreviouslyActiveValidators(ctx, currentlyActiveValidators)
 
 		// Store the new active validators for next epoch
@@ -123,6 +125,24 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 		k.SetCurrentEpoch(ctx, currentEpoch+1)
 		k.SetLastEpochHeight(ctx, currentHeight)
 
+		// Add telemetry for epoch metrics
+		telemetry.SetGauge(float32(currentEpoch+1), "staking", "epoch_number")
+		telemetry.SetGauge(float32(len(newEpochValidators)), "staking", "active_validators_count")
+
+		// Log the validator rotation statistics
+		continuingCount := 0
+		for _, val := range newEpochValidators {
+			if isValidatorInList(val, currentlyActiveValidators) {
+				continuingCount++
+			}
+		}
+		rotationPercentage := 100.0 - (float64(continuingCount) / float64(len(newEpochValidators)) * 100.0)
+		k.Logger(ctx).Info("Validator rotation completed",
+			"new_epoch", currentEpoch+1,
+			"rotation_percentage", fmt.Sprintf("%.2f%%", rotationPercentage),
+			"continuing_validators", continuingCount,
+			"total_validators", len(newEpochValidators))
+
 		// Emit epoch change event
 		sdkCtx.EventManager().EmitEvent(
 			sdk.NewEvent(
@@ -130,6 +150,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 				sdk.NewAttribute("epoch_number", fmt.Sprintf("%d", currentEpoch+1)),
 				sdk.NewAttribute("height", fmt.Sprintf("%d", currentHeight)),
 				sdk.NewAttribute("validators_count", fmt.Sprintf("%d", len(newEpochValidators))),
+				sdk.NewAttribute("rotation_percentage", fmt.Sprintf("%.2f", rotationPercentage)),
 			),
 		)
 

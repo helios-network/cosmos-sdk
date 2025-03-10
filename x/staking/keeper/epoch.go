@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"math/rand"
+	"sort"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -18,7 +19,11 @@ var (
 	ActiveEpochValidatorsKey   = []byte("ActiveEpochValidators")
 	LastActiveEpochKey         = []byte{0x98} // Prefix for storing when a validator was last active
 	PreviousEpochValidatorsKey = []byte{0x99} // Prefix for storing previously active validators
+	EpochHistoryPrefix         = []byte{0x9A} // Prefix for storing historical epoch data
 )
+
+// MaxEpochHistory defines how many epochs of history to keep
+const MaxEpochHistory = 5
 
 // GetEpochLength returns the current epoch length in blocks
 func (k Keeper) GetEpochLength(ctx context.Context) uint64 {
@@ -85,6 +90,11 @@ type ActiveValidators struct {
 	Addresses []string `protobuf:"bytes,1,rep,name=addresses,proto3" json:"addresses,omitempty"`
 }
 
+// Make ActiveValidators a ProtoMsg by adding proto methods
+func (m *ActiveValidators) Reset()         { *m = ActiveValidators{} }
+func (m *ActiveValidators) String() string { return "ActiveValidators" }
+func (m *ActiveValidators) ProtoMessage()  {}
+
 // GetLastActiveEpoch returns the last epoch a validator was active
 func (k Keeper) GetLastActiveEpoch(ctx context.Context, valAddr string) uint64 {
 	store := k.storeService.OpenKVStore(ctx)
@@ -140,6 +150,12 @@ func (k Keeper) SetActiveValidatorsForCurrentEpoch(ctx context.Context, validato
 	addresses := make([]string, 0, len(validators))
 	currentEpoch := k.GetCurrentEpoch(ctx)
 
+	// Store the current epoch's validator set in history before updating
+	k.storeEpochHistory(ctx, currentEpoch, validators)
+
+	// Prune old history entries if they exceed MaxEpochHistory
+	k.pruneEpochHistory(ctx, currentEpoch)
+
 	for _, val := range validators {
 		addresses = append(addresses, val.GetOperator())
 		// Update the last active epoch for each validator
@@ -156,6 +172,88 @@ func (k Keeper) SetActiveValidatorsForCurrentEpoch(ctx context.Context, validato
 	if err != nil {
 		panic(err)
 	}
+}
+
+// storeEpochHistory saves the validator set for a specific epoch
+func (k Keeper) storeEpochHistory(ctx context.Context, epoch uint64, validators []types.Validator) {
+	if epoch == 0 {
+		return // Don't store epoch 0
+	}
+
+	store := k.storeService.OpenKVStore(ctx)
+
+	addresses := make([]string, 0, len(validators))
+	for _, val := range validators {
+		addresses = append(addresses, val.GetOperator())
+	}
+
+	activeValidators := ActiveValidators{
+		Addresses: addresses,
+	}
+
+	bz := k.cdc.MustMarshal(&activeValidators)
+
+	key := makeEpochHistoryKey(epoch)
+	err := store.Set(key, bz)
+	if err != nil {
+		k.Logger(ctx).Error("Failed to store epoch history", "epoch", epoch, "error", err)
+	}
+}
+
+// pruneEpochHistory removes old epoch history entries to limit storage growth
+func (k Keeper) pruneEpochHistory(ctx context.Context, currentEpoch uint64) {
+	if currentEpoch <= MaxEpochHistory {
+		return // Not enough history to prune
+	}
+
+	store := k.storeService.OpenKVStore(ctx)
+	epochToPrune := currentEpoch - MaxEpochHistory
+	key := makeEpochHistoryKey(epochToPrune)
+	err := store.Delete(key)
+	if err != nil {
+		k.Logger(ctx).Error("Failed to prune epoch history", "epoch", epochToPrune, "error", err)
+	}
+}
+
+// makeEpochHistoryKey creates a storage key for epoch history
+func makeEpochHistoryKey(epoch uint64) []byte {
+	bz := make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, epoch)
+	return append(EpochHistoryPrefix, bz...)
+}
+
+// GetEpochValidators retrieves validators from a specific epoch
+func (k Keeper) GetEpochValidators(ctx context.Context, epoch uint64) []types.Validator {
+	// For current epoch, use the active validators
+	if epoch == k.GetCurrentEpoch(ctx) {
+		return k.GetActiveValidatorsForCurrentEpoch(ctx)
+	}
+
+	// Otherwise retrieve from history
+	store := k.storeService.OpenKVStore(ctx)
+	key := makeEpochHistoryKey(epoch)
+	bz, err := store.Get(key)
+	if err != nil || bz == nil {
+		return []types.Validator{}
+	}
+
+	activeValidators := ActiveValidators{}
+	k.cdc.MustUnmarshal(bz, &activeValidators)
+
+	validators := make([]types.Validator, 0, len(activeValidators.Addresses))
+	for _, addrStr := range activeValidators.Addresses {
+		valAddr, err := sdk.ValAddressFromBech32(addrStr)
+		if err != nil {
+			continue
+		}
+
+		val, err := k.GetValidator(ctx, valAddr)
+		if err == nil {
+			validators = append(validators, val)
+		}
+	}
+
+	return validators
 }
 
 // GetAllPreviouslyActiveValidators gets all validators that were active in any previous epoch
@@ -239,7 +337,7 @@ func (k Keeper) clearPreviouslyActiveValidators(ctx context.Context) {
 	}
 }
 
-// selectValidatorsForEpoch selects validators for the next epoch
+// selectValidatorsForEpoch selects validators for the next epoch with all improvements
 func (k Keeper) selectValidatorsForEpoch(ctx context.Context, allValidators []types.Validator, count int64) []types.Validator {
 	// If we have fewer validators than needed, use all non-jailed validators
 	if int64(len(allValidators)) <= count {
@@ -260,22 +358,121 @@ func (k Keeper) selectValidatorsForEpoch(ctx context.Context, allValidators []ty
 		}
 	}
 
-	// Generate a random seed based on block hash
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentEpoch := k.GetCurrentEpoch(ctx)
+	currentValidators := k.GetActiveValidatorsForCurrentEpoch(ctx)
+
+	// IMPROVEMENT 1: Better randomness source
+	// Mix multiple sources of entropy for improved randomness
 	blockHash := sdkCtx.HeaderHash()
-	seed := int64(binary.BigEndian.Uint64(blockHash[:8]))
-	rng := rand.New(rand.NewSource(seed))
+	timestamp := sdkCtx.BlockHeader().Time.UnixNano()
+	randSource := timestamp ^ int64(binary.BigEndian.Uint64(blockHash[:8])) ^ int64(currentEpoch)
 
-	// Shuffle the validators
-	shuffledIndices := rng.Perm(len(nonJailed))
-
-	// Select validators up to count
-	selected := make([]types.Validator, 0, count)
-	for i := int64(0); i < count && i < int64(len(shuffledIndices)); i++ {
-		selected = append(selected, nonJailed[shuffledIndices[i]])
+	// Add additional entropy from more recent blocks if available
+	// This makes it harder to predict in advance
+	if len(sdkCtx.BlockHeader().LastBlockId.Hash) >= 8 {
+		randSource ^= int64(binary.BigEndian.Uint64(sdkCtx.BlockHeader().LastBlockId.Hash[:8]))
 	}
 
-	return selected
+	// Create a random number generator with our combined entropy sources
+	rng := rand.New(rand.NewSource(randSource))
+
+	// IMPROVEMENT 2: Ensure validator rotation - ensure at least 40% are new validators
+	// First, determine how many validators we need to rotate out (at least 40%)
+	minNewValidators := int64(float64(count) * 0.4)
+	maxContinuingValidators := count - minNewValidators
+
+	// Split validators into two groups: currently active and inactive
+	var activeValidators []types.Validator
+	var inactiveValidators []types.Validator
+
+	for _, val := range nonJailed {
+		if isValidatorInList(val, currentValidators) {
+			activeValidators = append(activeValidators, val)
+		} else {
+			inactiveValidators = append(inactiveValidators, val)
+		}
+	}
+
+	// IMPROVEMENT 3: Weighted selection for inactive validators based on stake and inactivity
+	// Calculate weights for inactive validators based on stake and time since last active
+	type weightedValidator struct {
+		validator types.Validator
+		weight    float64
+	}
+
+	// Weight inactive validators
+	var weightedInactive []weightedValidator
+	for _, val := range inactiveValidators {
+		// Get the validator's tokens (stake)
+		tokens := val.GetTokens().Int64()
+
+		// Get the epochs since this validator was last active
+		lastActiveEpoch := k.GetLastActiveEpoch(ctx, val.GetOperator())
+		inactiveEpochs := uint64(1) // Minimum 1 to avoid division by zero
+		if currentEpoch > lastActiveEpoch {
+			inactiveEpochs = currentEpoch - lastActiveEpoch
+		}
+
+		// Calculate weight based on stake and inactivity period
+		// Higher stake and longer inactivity both increase weight
+		weight := float64(tokens) * float64(inactiveEpochs)
+
+		weightedInactive = append(weightedInactive, weightedValidator{
+			validator: val,
+			weight:    weight,
+		})
+	}
+
+	// Sort inactive validators by weight (descending)
+	sort.Slice(weightedInactive, func(i, j int) bool {
+		return weightedInactive[i].weight > weightedInactive[j].weight
+	})
+
+	// Build the new validator set
+	selected := make([]types.Validator, 0, count)
+
+	// First add inactive validators with highest weights to ensure rotation
+	// We aim to add at least minNewValidators from inactive set
+	for i := 0; i < len(weightedInactive) && int64(len(selected)) < minNewValidators; i++ {
+		selected = append(selected, weightedInactive[i].validator)
+	}
+
+	// If we couldn't get enough new validators, we'll just have to use what we have
+	// Now we'll add active validators, but ensure we don't exceed maxContinuingValidators
+
+	// Shuffle the active validators for random selection
+	shuffledActiveIndices := rng.Perm(len(activeValidators))
+
+	// Add active validators but respect maxContinuingValidators limit
+	activeAdded := int64(0)
+	for i := 0; i < len(shuffledActiveIndices) && activeAdded < maxContinuingValidators && int64(len(selected)) < count; i++ {
+		selected = append(selected, activeValidators[shuffledActiveIndices[i]])
+		activeAdded++
+	}
+
+	// If we still need more validators after using up our inactive and maxContinuingValidators active ones,
+	// add remaining inactive validators
+	remainingInactiveIndex := minNewValidators
+	for int64(len(selected)) < count && int(remainingInactiveIndex) < len(weightedInactive) {
+		selected = append(selected, weightedInactive[remainingInactiveIndex].validator)
+		remainingInactiveIndex++
+	}
+
+	// If we somehow still don't have enough (unlikely), we can exceed our maxContinuingValidators
+	// limit and add more active validators
+	for i := int(activeAdded); int64(len(selected)) < count && i < len(shuffledActiveIndices); i++ {
+		selected = append(selected, activeValidators[shuffledActiveIndices[i]])
+	}
+
+	// Final shuffle of the entire selected set to randomize positions
+	finalIndices := rng.Perm(len(selected))
+	finalSelected := make([]types.Validator, 0, len(selected))
+	for _, idx := range finalIndices {
+		finalSelected = append(finalSelected, selected[idx])
+	}
+
+	return finalSelected
 }
 
 // isValidatorInList checks if a validator is in the given list
@@ -327,10 +524,3 @@ func (k Keeper) GetCurrentEpochNumber(ctx context.Context) uint64 {
 func (k Keeper) GetPreviousEpochValidators(ctx context.Context) []types.Validator {
 	return k.GetAllPreviouslyActiveValidators(ctx)
 }
-
-///
-
-// Make ActiveValidators a ProtoMsg by adding proto methods
-func (m *ActiveValidators) Reset()         { *m = ActiveValidators{} }
-func (m *ActiveValidators) String() string { return "ActiveValidators" }
-func (m *ActiveValidators) ProtoMessage()  {}

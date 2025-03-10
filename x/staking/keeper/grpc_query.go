@@ -797,7 +797,7 @@ func (k Keeper) EpochInfo(ctx context.Context, req *types.QueryEpochInfoRequest)
 	}, nil
 }
 
-func (k Keeper) GetEpochValidators(ctx context.Context, req *types.QueryEpochValidatorsRequest) (*types.QueryEpochValidatorsResponse, error) {
+func (k Keeper) GetEpochValidatorsHandler(ctx context.Context, req *types.QueryEpochValidatorsRequest) (*types.QueryEpochValidatorsResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
@@ -809,58 +809,75 @@ func (k Keeper) GetEpochValidators(ctx context.Context, req *types.QueryEpochVal
 		return nil, status.Error(codes.FailedPrecondition, "epoch-based validator rotation is not enabled")
 	}
 
-	store := k.storeService.OpenKVStore(sdkCtx)
+	// Get current epoch for validation
+	currentEpoch := k.GetCurrentEpoch(sdkCtx)
 
-	// Prepare response
-	var validators []types.Validator
+	// If no specific epoch is requested or epoch is 0, use current epoch
+	epochToQuery := currentEpoch
 
-	// Manually handle iteration and pagination
-	iterator, err := store.Iterator(ActiveEpochValidatorsKey, append(ActiveEpochValidatorsKey, 0xFF))
-	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to fetch validators")
+	// Validate requested epoch is not in the future
+	if epochToQuery > currentEpoch {
+		return nil, status.Error(codes.InvalidArgument, "requested epoch is in the future")
 	}
-	defer iterator.Close()
 
-	// Pagination setup
+	// Get validators for the requested epoch
+	var validators []types.Validator
+	if epochToQuery == currentEpoch {
+		// For current epoch, use the active validators function
+		validators = k.GetActiveValidatorsForCurrentEpoch(sdkCtx)
+	} else {
+		// For historical epochs, use the epoch history function
+		validators = k.GetEpochValidators(sdkCtx, epochToQuery)
+	}
+
+	// If no validators found, return empty list
+	if len(validators) == 0 {
+		return &types.QueryEpochValidatorsResponse{
+			Validators: []types.Validator{},
+			Pagination: &query.PageResponse{
+				Total: 0,
+			},
+		}, nil
+	}
+
+	// Handle pagination
 	start, end := uint64(0), uint64(len(validators))
 	if req.Pagination != nil {
-		start = req.Pagination.Offset
-		end = start + req.Pagination.Limit
+		if req.Pagination.Offset > 0 {
+			start = req.Pagination.Offset
+		}
+
+		if req.Pagination.Limit > 0 {
+			end = start + req.Pagination.Limit
+			if end > uint64(len(validators)) {
+				end = uint64(len(validators))
+			}
+		}
 	}
 
-	// Read and paginate manually
-	index := uint64(0)
-	for ; iterator.Valid(); iterator.Next() {
-		if index >= start && index < end {
-			// Extract validator address
-			valAddrStr := string(iterator.Value())
-
-			// Convert address to ValAddress
-			valAddr, err := sdk.ValAddressFromBech32(valAddrStr)
-			if err != nil {
-				continue // Skip invalid addresses
-			}
-
-			// Fetch full validator object
-			validator, err := k.GetValidator(sdkCtx, valAddr)
-			if err == nil { // Append only if found
-				validators = append(validators, validator)
-			}
-		}
-		index++
-		if index >= end {
-			break // Stop once we've reached the page limit
-		}
+	// Apply pagination
+	var paginatedResults []types.Validator
+	if start < uint64(len(validators)) {
+		paginatedResults = validators[start:end]
+	} else {
+		paginatedResults = []types.Validator{}
 	}
 
 	// Prepare pagination response
+	var nextKey []byte
+	if end < uint64(len(validators)) {
+		// Only set nextKey if there are more results
+		nextKeyUint64 := end
+		nextKey = sdk.Uint64ToBigEndian(nextKeyUint64)
+	}
+
 	pageRes := &query.PageResponse{
-		NextKey: nil, // We do not track NextKey manually in this fix
+		NextKey: nextKey,
 		Total:   uint64(len(validators)),
 	}
 
 	return &types.QueryEpochValidatorsResponse{
-		Validators: validators,
+		Validators: paginatedResults,
 		Pagination: pageRes,
 	}, nil
 }
@@ -878,58 +895,65 @@ func (k Keeper) GetPreviousEpochValidatorsHandler(ctx context.Context, req *type
 		return nil, status.Error(codes.FailedPrecondition, "epoch-based validator rotation is not enabled")
 	}
 
-	store := k.storeService.OpenKVStore(sdkCtx)
+	// Get current epoch for validation
+	currentEpoch := k.GetCurrentEpoch(sdkCtx)
 
-	// Prepare response
-	var validators []types.Validator
-
-	// Manually iterate over previously active validators
-	iterator, err := store.Iterator(PreviousEpochValidatorsKey, append(PreviousEpochValidatorsKey, 0xFF))
-	if err != nil {
-		return nil, status.Error(codes.Internal, "failed to fetch previous epoch validators")
+	// Check if we have a previous epoch (current epoch > 1)
+	if currentEpoch <= 1 {
+		return nil, status.Error(codes.NotFound, "no previous epoch exists yet")
 	}
-	defer iterator.Close()
 
-	// Pagination setup
-	start, end := uint64(0), uint64(len(validators))
+	// Get the previous epoch validators directly
+	previousValidators := k.GetAllPreviouslyActiveValidators(sdkCtx)
+
+	// If no validators found, return empty list
+	if len(previousValidators) == 0 {
+		return &types.QueryPreviousEpochValidatorsResponse{
+			Validators: []types.Validator{},
+			Pagination: &query.PageResponse{
+				Total: 0,
+			},
+		}, nil
+	}
+
+	// Handle pagination
+	start, end := uint64(0), uint64(len(previousValidators))
 	if req.Pagination != nil {
-		start = req.Pagination.Offset
-		end = start + req.Pagination.Limit
+		if req.Pagination.Offset > 0 {
+			start = req.Pagination.Offset
+		}
+
+		if req.Pagination.Limit > 0 {
+			end = start + req.Pagination.Limit
+			if end > uint64(len(previousValidators)) {
+				end = uint64(len(previousValidators))
+			}
+		}
 	}
 
-	// Read and paginate manually
-	index := uint64(0)
-	for ; iterator.Valid(); iterator.Next() {
-		if index >= start && index < end {
-			// Extract validator address
-			valAddrStr := string(iterator.Value())
-
-			// Convert address to ValAddress
-			valAddr, err := sdk.ValAddressFromBech32(valAddrStr)
-			if err != nil {
-				continue // Skip invalid addresses
-			}
-
-			// Fetch full validator object
-			validator, err := k.GetValidator(sdkCtx, valAddr)
-			if err == nil { // Append only if found
-				validators = append(validators, validator)
-			}
-		}
-		index++
-		if index >= end {
-			break // Stop once we've reached the page limit
-		}
+	// Apply pagination
+	var paginatedResults []types.Validator
+	if start < uint64(len(previousValidators)) {
+		paginatedResults = previousValidators[start:end]
+	} else {
+		paginatedResults = []types.Validator{}
 	}
 
 	// Prepare pagination response
+	var nextKey []byte
+	if end < uint64(len(previousValidators)) {
+		// Only set nextKey if there are more results
+		nextKeyUint64 := end
+		nextKey = sdk.Uint64ToBigEndian(nextKeyUint64)
+	}
+
 	pageRes := &query.PageResponse{
-		NextKey: nil, // We do not track NextKey manually in this fix
-		Total:   uint64(len(validators)),
+		NextKey: nextKey,
+		Total:   uint64(len(previousValidators)),
 	}
 
 	return &types.QueryPreviousEpochValidatorsResponse{
-		Validators: validators,
+		Validators: paginatedResults,
 		Pagination: pageRes,
 	}, nil
 }
