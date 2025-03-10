@@ -82,7 +82,7 @@ func (k Keeper) SetLastEpochHeight(ctx context.Context, height uint64) {
 
 // ActiveValidators is a struct to store active validator addresses
 type ActiveValidators struct {
-	Addresses []string `json:"addresses"`
+	Addresses []string `protobuf:"bytes,1,rep,name=addresses,proto3" json:"addresses,omitempty"`
 }
 
 // GetLastActiveEpoch returns the last epoch a validator was active
