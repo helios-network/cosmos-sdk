@@ -71,7 +71,7 @@ func DefaultParams() Params {
 		sdk.DefaultBondDenom,
 		DefaultMinCommissionRate,
 		&StakeReductionParams{
-			Enabled:            true,
+			Enabled:            false,
 			DominanceThreshold: DefaultDelegatorStakeReductionDominanceThreshold,
 			MaxReduction:       DefaultDelegatorStakeReductionMaxReduction,
 			CurveSteepness:     DefaultDelegatorStakeReductionCurveSteepness,
