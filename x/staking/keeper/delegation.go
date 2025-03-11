@@ -1016,31 +1016,36 @@ func (k Keeper) UnDelegateBoost(
 	bondAmt math.Int,
 	bondDenom string,
 	validator types.Validator,
-) (math.Int, error) {
+) (time.Time, math.Int, error) {
 	// In some situations, the exchange rate becomes invalid, e.g. if
 	// Validator loses all tokens due to slashing. In this case,
 	// make all future delegations invalid.
 	if validator.InvalidExRate() {
-		return math.ZeroInt(), types.ErrDelegatorShareExRateInvalid
+		return time.Time{}, math.ZeroInt(), types.ErrDelegatorShareExRateInvalid
 	}
 
 	// Convert validator address
 	valbz, err := k.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
 	if err != nil {
-		return math.ZeroInt(), err
+		return time.Time{}, math.ZeroInt(), err
 	}
 
 	// get delegation boost
 	delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
 	if err == nil {
-		return math.ZeroInt(), fmt.Errorf("failed to undelegate boost: %w", err)
+		return time.Time{}, math.ZeroInt(), fmt.Errorf("failed to undelegate boost: %w", err)
 
 	}
 
-	//TODO: Add here the verification of the delegator's weightedTotal; if it is lower than the validator's minDelegation, then the delegator will not be able to delegate.
+	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	if err == nil {
+		if delegation.TotalWeightedAmount.GT(math.ZeroInt()) {
+			return time.Time{}, math.ZeroInt(), fmt.Errorf("cannot undelegate ahelios until all other assets have been undelegated")
+		}
+	}
 
 	if delegationBoost.Amount.LT(bondAmt) {
-		return math.ZeroInt(), fmt.Errorf("insufficient boost delegation: minimum required is %s", validator.MinDelegation)
+		return time.Time{}, math.ZeroInt(), fmt.Errorf("insufficient boost delegation: minimum required is %s", validator.MinDelegation)
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -1048,17 +1053,17 @@ func (k Keeper) UnDelegateBoost(
 	coins := sdk.NewCoins(sdk.NewCoin(bondDenom, bondAmt))
 	err = k.bankKeeper.SendCoinsFromModuleToAccount(sdkCtx, types.BoostedPoolName, delAddr, coins)
 	if err != nil {
-		return math.ZeroInt(), err
+		return time.Time{}, math.ZeroInt(), err
 	}
 
 	delegationBoost.Amount = delegationBoost.Amount.Sub(bondAmt)
 
 	err = k.SetDelegationBoost(ctx, delegationBoost)
 	if err != nil {
-		return math.ZeroInt(), err
+		return time.Time{}, math.ZeroInt(), err
 	}
 
-	return math.ZeroInt(), nil
+	return time.Time{}, bondAmt, nil
 }
 
 // Delegate performs a delegation, set/update everything necessary within the store.

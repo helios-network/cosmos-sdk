@@ -3170,7 +3170,6 @@ func _Query_ShareRepartitionMap_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-<<<<<<< HEAD
 func _Query_EpochInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(QueryEpochInfoRequest)
 	if err := dec(in); err != nil {
@@ -3297,9 +3296,7 @@ func _Query_GetIsEpochEnabledHandler_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
-=======
 var Query_serviceDesc = _Query_serviceDesc
->>>>>>> 265cd2e435 (feat: add delegation boost)
 var _Query_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "cosmos.staking.v1beta1.Query",
 	HandlerType: (*QueryServer)(nil),
