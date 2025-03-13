@@ -101,6 +101,8 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 				"current_epoch", currentEpoch,
 				"current_height", currentHeight,
 			)
+			k.SetLastEpochHeight(ctx, currentHeight)
+			k.SetCurrentEpoch(ctx, currentEpoch+1)
 		}
 		return updates, nil
 	}
@@ -121,6 +123,10 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 			k.Logger(ctx).Info("Automatically added new validators in non-boundary epoch due to insufficient active validators", "new_validators",
 				len(filteredNewCandidates), "current_height", currentHeight, "target_validators", validatorsPerEpoch)
 			k.SetActiveValidatorsForCurrentEpoch(ctx, filteredCurrentEpochValidators)
+			// in case no epoch past already we have to set it for initialization
+			if currentHeight == 0 {
+				k.SetLastEpochHeight(ctx, currentHeight)
+			}
 		}
 		return updates, nil
 	}
