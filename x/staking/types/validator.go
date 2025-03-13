@@ -503,6 +503,16 @@ func (v Validator) GetConsAddr() ([]byte, error) {
 	return pk.Address().Bytes(), nil
 }
 
+// GetConsAddr extracts Consensus key address
+func (v Validator) GetConsPubKey() (cryptotypes.PubKey, error) {
+	pk, ok := v.ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
+	if !ok {
+		return nil, errors.Wrapf(sdkerrors.ErrInvalidType, "expecting cryptotypes.PubKey, got %T", pk)
+	}
+
+	return pk, nil
+}
+
 func (v Validator) GetTokens() math.Int       { return v.Tokens }
 func (v Validator) GetBondedTokens() math.Int { return v.BondedTokens() }
 func (v Validator) GetConsensusPower(r math.Int) int64 {

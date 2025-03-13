@@ -8,7 +8,6 @@ import (
 
 	"cosmossdk.io/math"
 
-	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -25,13 +24,18 @@ const (
 	// Default maximum entries in a UBD/RED pair
 	DefaultMaxEntries uint32 = 7
 
-	// DefaultHistorical entries is 10000. Apps that don't use IBC can ignore this
+	// DefaultHistoricalEntries is 10000. Apps that don't use IBC can ignore this
 	// value by not adding the staking module to the application module manager's
 	// SetOrderBeginBlockers.
 	DefaultHistoricalEntries uint32 = 10000
 
 	// `enabled`: Whether the Delegator Stake Reduction mechanism is active
 	DefaultDelegatorStakeReductionEnabled bool = true
+
+	// Default values for new validator selection parameters
+	DefaultStakeWeightFactor    uint64 = 85 // 85% weight factor
+	DefaultBaselineChanceFactor uint64 = 5  // 5% baseline chance
+	DefaultRandomnessFactor     uint64 = 10 // 10% randomness influence
 )
 
 var (
@@ -49,7 +53,15 @@ var (
 )
 
 // NewParams creates a new Params instance
-func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historicalEntries uint32, bondDenom string, minCommissionRate math.LegacyDec, delegatorStakeReduction *StakeReductionParams) Params {
+func NewParams(
+	unbondingTime time.Duration,
+	maxValidators, maxEntries, historicalEntries uint32,
+	bondDenom string,
+	minCommissionRate math.LegacyDec,
+	delegatorStakeReduction *StakeReductionParams,
+	// New parameters
+	stakeWeightFactor, baselineChanceFactor, randomnessFactor uint64,
+) Params {
 	return Params{
 		UnbondingTime:           unbondingTime,
 		MaxValidators:           maxValidators,
@@ -58,6 +70,9 @@ func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historica
 		BondDenom:               bondDenom,
 		MinCommissionRate:       minCommissionRate,
 		DelegatorStakeReduction: delegatorStakeReduction,
+		StakeWeightFactor:       stakeWeightFactor,
+		BaselineChanceFactor:    baselineChanceFactor,
+		RandomnessFactor:        randomnessFactor,
 	}
 }
 
@@ -71,35 +86,19 @@ func DefaultParams() Params {
 		sdk.DefaultBondDenom,
 		DefaultMinCommissionRate,
 		&StakeReductionParams{
-			Enabled:            false,
+			Enabled:            true,
 			DominanceThreshold: DefaultDelegatorStakeReductionDominanceThreshold,
 			MaxReduction:       DefaultDelegatorStakeReductionMaxReduction,
 			CurveSteepness:     DefaultDelegatorStakeReductionCurveSteepness,
 		},
+		// Add default values for new parameters
+		DefaultStakeWeightFactor,
+		DefaultBaselineChanceFactor,
+		DefaultRandomnessFactor,
 	)
 }
 
-// unmarshal the current staking params value from store key or panic
-func MustUnmarshalParams(cdc *codec.LegacyAmino, value []byte) Params {
-	params, err := UnmarshalParams(cdc, value)
-	if err != nil {
-		panic(err)
-	}
-
-	return params
-}
-
-// unmarshal the current staking params value from store key
-func UnmarshalParams(cdc *codec.LegacyAmino, value []byte) (params Params, err error) {
-	err = cdc.Unmarshal(value, &params)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-// validate a set of params
+// Validate a set of params
 func (p Params) Validate() error {
 	if err := validateUnbondingTime(p.UnbondingTime); err != nil {
 		return err
@@ -122,6 +121,19 @@ func (p Params) Validate() error {
 	}
 
 	if err := validateHistoricalEntries(p.HistoricalEntries); err != nil {
+		return err
+	}
+
+	// Validate new parameters
+	if err := validateStakeWeightFactor(p.StakeWeightFactor); err != nil {
+		return err
+	}
+
+	if err := validateBaselineChanceFactor(p.BaselineChanceFactor); err != nil {
+		return err
+	}
+
+	if err := validateRandomnessFactor(p.RandomnessFactor); err != nil {
 		return err
 	}
 
@@ -220,6 +232,46 @@ func validateMinCommissionRate(i interface{}) error {
 	}
 	if v.GT(math.LegacyOneDec()) {
 		return fmt.Errorf("minimum commission rate cannot be greater than 100%%: %s", v)
+	}
+
+	return nil
+}
+
+// Validation functions for new parameters
+func validateStakeWeightFactor(i interface{}) error {
+	v, ok := i.(uint64)
+	if !ok {
+		return fmt.Errorf("invalid parameter type: %T", i)
+	}
+
+	if v > 100 {
+		return fmt.Errorf("stake weight factor must be between 0 and 100: %d", v)
+	}
+
+	return nil
+}
+
+func validateBaselineChanceFactor(i interface{}) error {
+	v, ok := i.(uint64)
+	if !ok {
+		return fmt.Errorf("invalid parameter type: %T", i)
+	}
+
+	if v > 100 {
+		return fmt.Errorf("baseline chance factor must be between 0 and 100: %d", v)
+	}
+
+	return nil
+}
+
+func validateRandomnessFactor(i interface{}) error {
+	v, ok := i.(uint64)
+	if !ok {
+		return fmt.Errorf("invalid parameter type: %T", i)
+	}
+
+	if v > 100 {
+		return fmt.Errorf("randomness factor must be between 0 and 100: %d", v)
 	}
 
 	return nil

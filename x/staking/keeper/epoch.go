@@ -5,9 +5,11 @@ package keeper
 import (
 	"context"
 	"encoding/binary"
+	"math/big"
 	"math/rand"
 	"sort"
 
+	"cosmossdk.io/math"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
@@ -23,7 +25,7 @@ var (
 )
 
 // MaxEpochHistory defines how many epochs of history to keep
-const MaxEpochHistory = 5
+const MaxEpochHistory = 100
 
 // GetEpochLength returns the current epoch length in blocks
 func (k Keeper) GetEpochLength(ctx context.Context) uint64 {
@@ -337,142 +339,387 @@ func (k Keeper) clearPreviouslyActiveValidators(ctx context.Context) {
 	}
 }
 
-// selectValidatorsForEpoch selects validators for the next epoch with all improvements
-func (k Keeper) selectValidatorsForEpoch(ctx context.Context, allValidators []types.Validator, count int64) []types.Validator {
-	// If we have fewer validators than needed, use all non-jailed validators
-	if int64(len(allValidators)) <= count {
-		selected := make([]types.Validator, 0, len(allValidators))
-		for _, val := range allValidators {
-			if !val.IsJailed() {
-				selected = append(selected, val)
-			}
-		}
-		return selected
-	}
-
-	// Get non-jailed validators
-	nonJailed := make([]types.Validator, 0, len(allValidators))
-	for _, val := range allValidators {
-		if !val.IsJailed() {
-			nonJailed = append(nonJailed, val)
-		}
-	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	currentEpoch := k.GetCurrentEpoch(ctx)
-	currentValidators := k.GetActiveValidatorsForCurrentEpoch(ctx)
-
-	// IMPROVEMENT 1: Better randomness source
-	// Mix multiple sources of entropy for improved randomness
+// Generate entropy source from multiple blockchain parameters
+func generateEntropySource(sdkCtx sdk.Context, currentEpoch uint64) int64 {
 	blockHash := sdkCtx.HeaderHash()
 	timestamp := sdkCtx.BlockHeader().Time.UnixNano()
 	randSource := timestamp ^ int64(binary.BigEndian.Uint64(blockHash[:8])) ^ int64(currentEpoch)
 
-	// Add additional entropy from more recent blocks if available
-	// This makes it harder to predict in advance
+	// Add additional entropy from last block hash if available
 	if len(sdkCtx.BlockHeader().LastBlockId.Hash) >= 8 {
 		randSource ^= int64(binary.BigEndian.Uint64(sdkCtx.BlockHeader().LastBlockId.Hash[:8]))
 	}
 
-	// Create a random number generator with our combined entropy sources
+	return randSource
+}
+
+// Helper function to filter non-jailed validators
+func filterBondedNonJailedValidators(validators []types.Validator) []types.Validator {
+	nonJailedBonded := make([]types.Validator, 0, len(validators))
+	for _, val := range validators {
+		if !val.IsJailed() && val.IsBonded() {
+			nonJailedBonded = append(nonJailedBonded, val)
+		}
+	}
+	return nonJailedBonded
+}
+
+// Helper type for weighted validators
+type weightedValidator struct {
+	validator types.Validator
+	weight    *big.Int
+}
+
+// selectValidatorsForEpoch selects validators for the next epoch with improved selection strategy
+func (k Keeper) selectValidatorsForEpoch(ctx context.Context, allValidators []types.Validator, count int64) []types.Validator {
+	// Handle edge case: not enough validators
+	if int64(len(allValidators)) <= count {
+		return filterBondedNonJailedValidators(allValidators)
+	}
+
+	// Prepare context and entropy sources
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentEpoch := k.GetCurrentEpoch(ctx)
+	currentValidators := k.GetActiveValidatorsForCurrentEpoch(ctx)
+
+	// Retrieve current parameters
+	params, _ := k.GetParams(sdkCtx)
+
+	// Generate deterministic randomness
+	randSource := generateEntropySource(sdkCtx, currentEpoch)
 	rng := rand.New(rand.NewSource(randSource))
 
-	// IMPROVEMENT 2: Ensure validator rotation - ensure at least 40% are new validators
-	// First, determine how many validators we need to rotate out (at least 40%)
-	minNewValidators := int64(float64(count) * 0.4)
-	maxContinuingValidators := count - minNewValidators
+	// Filter non-jailed validators
+	nonJailedBonded := filterBondedNonJailedValidators(allValidators)
 
-	// Split validators into two groups: currently active and inactive
-	var activeValidators []types.Validator
-	var inactiveValidators []types.Validator
+	// Weight all validators
+	weightedValidators := k.weightValidatorsWithParams(
+		ctx,
+		nonJailedBonded,
+		currentEpoch,
+		currentValidators,
+		params,
+	)
 
-	for _, val := range nonJailed {
-		if isValidatorInList(val, currentValidators) {
-			activeValidators = append(activeValidators, val)
-		} else {
-			inactiveValidators = append(inactiveValidators, val)
-		}
+	// Filter out low-weight validators before selection
+	filteredWeightedValidators := filterLowWeightValidators(weightedValidators)
+
+	// If filtering removed too many validators, fall back to original list
+	if len(filteredWeightedValidators) <= int(count) {
+		filteredWeightedValidators = weightedValidators
 	}
 
-	// IMPROVEMENT 3: Weighted selection for inactive validators based on stake and inactivity
-	// Calculate weights for inactive validators based on stake and time since last active
-	type weightedValidator struct {
-		validator types.Validator
-		weight    float64
-	}
+	// Select top validators
+	return k.selectTopValidators(rng, weightedValidators, count)
+}
 
-	// Weight inactive validators
-	var weightedInactive []weightedValidator
-	for _, val := range inactiveValidators {
-		// Get the validator's tokens (stake)
-		tokens := val.GetTokens().Int64()
+// Comprehensive weight calculation for all validators
+func (k Keeper) weightValidatorsWithParams(
+	ctx context.Context,
+	validators []types.Validator,
+	currentEpoch uint64,
+	currentValidators []types.Validator,
+	params types.Params,
+) []weightedValidator {
+	// Calculate total validator tokens
+	totalValidatorTokens := calculateTotalValidatorTokens(validators)
 
-		// Get the epochs since this validator was last active
+	var weightedValidators []weightedValidator
+
+	for _, val := range validators {
+		// Basic validator details
+		tokens := val.GetTokens().BigInt()
+
+		// Check if validator is currently active
+		isCurrentValidator := isValidatorInList(val, currentValidators)
+
+		// Calculate epochs since last active
 		lastActiveEpoch := k.GetLastActiveEpoch(ctx, val.GetOperator())
-		inactiveEpochs := uint64(1) // Minimum 1 to avoid division by zero
-		if currentEpoch > lastActiveEpoch {
-			inactiveEpochs = currentEpoch - lastActiveEpoch
-		}
+		inactiveEpochs := calculateInactiveEpochs(currentEpoch, lastActiveEpoch)
 
-		// Calculate weight based on stake and inactivity period
-		// Higher stake and longer inactivity both increase weight
-		weight := float64(tokens) * float64(inactiveEpochs)
+		// Calculate base weight components
+		// 1. Stake weight
+		stakeWeight := calculateStakeWeight(tokens, totalValidatorTokens, params)
 
-		weightedInactive = append(weightedInactive, weightedValidator{
+		// 2. Inactivity bonus
+		inactivityBonus := calculateInactivityBonus(inactiveEpochs, params)
+
+		// 3. Current validator bonus/penalty
+		currentValidatorAdjustment := calculateCurrentValidatorAdjustment(
+			isCurrentValidator,
+			params,
+		)
+
+		// 4. Randomness factor
+		randomBoost := calculateRandomBoost(params)
+
+		// Combine all weight components
+		finalWeight := new(big.Int).Set(stakeWeight)
+		finalWeight.Add(finalWeight, inactivityBonus)
+		finalWeight.Add(finalWeight, currentValidatorAdjustment)
+		finalWeight.Add(finalWeight, randomBoost)
+
+		weightedValidators = append(weightedValidators, weightedValidator{
 			validator: val,
-			weight:    weight,
+			weight:    finalWeight,
 		})
 	}
 
-	// Sort inactive validators by weight (descending)
-	sort.Slice(weightedInactive, func(i, j int) bool {
-		return weightedInactive[i].weight > weightedInactive[j].weight
+	// Sort by weight in descending order
+	sort.Slice(weightedValidators, func(i, j int) bool {
+		return weightedValidators[i].weight.Cmp(weightedValidators[j].weight) > 0
 	})
 
-	// Build the new validator set
+	return weightedValidators
+}
+
+// HELIOS HIP - AVAILABLE IF NECESSARY - NOT USED CURRENTLY
+func _calculateLogarithmicStakeWeight(
+	tokens *big.Int,
+	totalValidatorTokens math.Int,
+	params types.Params,
+) *big.Int {
+	// Constants for high-precision integer math
+	const (
+		scaleFactor     = 1_000_000_000 // 1e9 for precision
+		logBase         = 10            // Use base-10 logarithm
+		logarithmFactor = 1_000_000     // Additional scaling for log precision
+	)
+
+	// Handle zero tokens case
+	if tokens.Cmp(big.NewInt(0)) == 0 || totalValidatorTokens.IsZero() {
+		return big.NewInt(0)
+	}
+
+	// Convert total tokens to big.Int
+	totalTokensBigInt := totalValidatorTokens.BigInt()
+
+	// Compute logarithm using integer approximation
+	// log_base(x) = log(x) / log(base)
+
+	// Step 1: Add 1 to prevent log(0) and improve scaling
+	adjustedTokens := new(big.Int).Add(tokens, big.NewInt(1))
+
+	// Step 2: Approximate logarithm using integer division
+	// Use a series of integer divisions to approximate log
+	logApprox := big.NewInt(0)
+	currentVal := new(big.Int).Set(adjustedTokens)
+
+	for currentVal.Cmp(big.NewInt(logBase)) > 0 {
+		logApprox.Add(logApprox, big.NewInt(1))
+		currentVal.Div(currentVal, big.NewInt(logBase))
+	}
+
+	// Scale the logarithmic approximation
+	logScaled := new(big.Int).Mul(logApprox, big.NewInt(logarithmFactor))
+
+	// Compute stake ratio (with scaled precision)
+	scaledTokens := new(big.Int).Mul(tokens, big.NewInt(scaleFactor))
+	stakeRatio := new(big.Int).Div(scaledTokens, totalTokensBigInt)
+
+	// Combine logarithmic weight with stake ratio
+	// Use params for fine-tuning
+	stakeWeightFactor := big.NewInt(int64(params.StakeWeightFactor))
+	if stakeWeightFactor.Cmp(big.NewInt(0)) <= 0 || stakeWeightFactor.Cmp(big.NewInt(100)) > 0 {
+		stakeWeightFactor = big.NewInt(85) // Default safe value
+	}
+
+	// Combine logarithmic approximation with stake ratio
+	finalWeight := new(big.Int).Mul(logScaled, stakeRatio)
+	finalWeight.Div(finalWeight, big.NewInt(scaleFactor))
+
+	// Apply stake weight factor
+	finalWeight.Mul(finalWeight, stakeWeightFactor)
+	finalWeight.Div(finalWeight, big.NewInt(100))
+
+	return finalWeight
+}
+
+// Calculate stake-based weight
+func calculateStakeWeight(
+	tokens *big.Int,
+	totalValidatorTokens math.Int,
+	params types.Params,
+) *big.Int {
+	// Convert total tokens to big.Int
+	totalTokensBigInt := totalValidatorTokens.BigInt()
+
+	// Define scaling factor to avoid decimals
+	const scaleFactor = 1_000_000_000 // 1e9 for precision scaling
+	scaleFactorBigInt := big.NewInt(scaleFactor)
+
+	// Avoid division by zero and handle zero tokens case
+	if totalTokensBigInt.Cmp(big.NewInt(0)) == 0 || tokens.Cmp(big.NewInt(0)) == 0 {
+		return big.NewInt(0)
+	}
+
+	// Validate stake weight factor
+	stakeWeightFactor := big.NewInt(int64(params.StakeWeightFactor))
+	if stakeWeightFactor.Cmp(big.NewInt(0)) <= 0 || stakeWeightFactor.Cmp(big.NewInt(100)) > 0 {
+		stakeWeightFactor = big.NewInt(85) // Default safe value
+	}
+
+	// Multiply first to maintain precision, then divide
+	scaledTokens := new(big.Int).Mul(tokens, scaleFactorBigInt)
+	stakeRatio := new(big.Int).Div(scaledTokens, totalTokensBigInt)
+
+	// Apply stake weight factor (scaled by 100)
+	adjustedStakeWeight := new(big.Int).Mul(stakeRatio, stakeWeightFactor)
+	adjustedStakeWeight.Div(adjustedStakeWeight, big.NewInt(100))
+
+	return adjustedStakeWeight
+}
+
+// Calculate bonus for inactive validators
+func calculateInactivityBonus(
+	inactiveEpochs *big.Int,
+	params types.Params,
+) *big.Int {
+	// Bonus increases with inactivity periods
+	inactivityFactor := new(big.Int).Mul(
+		inactiveEpochs,
+		big.NewInt(int64(params.BaselineChanceFactor)),
+	)
+	return inactivityFactor
+}
+
+// Adjust weight based on current validator status
+func calculateCurrentValidatorAdjustment(
+	isCurrentValidator bool,
+	params types.Params,
+) *big.Int {
+	if isCurrentValidator {
+		// Slight bonus for current validators to ensure some stability
+		return big.NewInt(int64(params.BaselineChanceFactor) * 10)
+	}
+	return big.NewInt(0)
+}
+
+// Add some randomness to weights
+func calculateRandomBoost(params types.Params) *big.Int {
+	// Generate a small random boost
+	randomBoost := big.NewInt(int64(params.RandomnessFactor))
+	return randomBoost
+}
+
+// Select validators using weighted randomness to ensure `count` is met
+func (k Keeper) selectTopValidators(
+	rng *rand.Rand,
+	weightedValidators []weightedValidator,
+	count int64,
+) []types.Validator {
+	// Ensure we don't select more than available
+	if int64(len(weightedValidators)) <= count {
+		return extractValidators(weightedValidators)
+	}
+
+	// Compute total weight sum
+	totalWeight := big.NewInt(0)
+	for _, wv := range weightedValidators {
+		totalWeight.Add(totalWeight, wv.weight)
+	}
+
+	// Prepare selection pool
 	selected := make([]types.Validator, 0, count)
+	seen := make(map[string]struct{})
+	maxAttempts := 3 * int(count) // Avoid infinite loop
+	attempts := 0
 
-	// First add inactive validators with highest weights to ensure rotation
-	// We aim to add at least minNewValidators from inactive set
-	for i := 0; i < len(weightedInactive) && int64(len(selected)) < minNewValidators; i++ {
-		selected = append(selected, weightedInactive[i].validator)
+	// Perform weighted random selection
+	for len(selected) < int(count) && attempts < maxAttempts {
+		pick := new(big.Int).Rand(rng, totalWeight) // Pick a random weight threshold
+		accumWeight := big.NewInt(0)
+
+		for _, wv := range weightedValidators {
+			accumWeight.Add(accumWeight, wv.weight)
+			if accumWeight.Cmp(pick) >= 0 {
+				// Ensure no duplicate selection
+				if _, exists := seen[wv.validator.GetOperator()]; exists {
+					continue
+				}
+
+				selected = append(selected, wv.validator)
+				seen[wv.validator.GetOperator()] = struct{}{}
+
+				// Reduce totalWeight to avoid picking the same validator again
+				totalWeight.Sub(totalWeight, wv.weight)
+				break // Restart selection process
+			}
+		}
+		attempts++
 	}
 
-	// If we couldn't get enough new validators, we'll just have to use what we have
-	// Now we'll add active validators, but ensure we don't exceed maxContinuingValidators
+	// If we failed to pick enough validators, return what we have
+	return selected
+}
 
-	// Shuffle the active validators for random selection
-	shuffledActiveIndices := rng.Perm(len(activeValidators))
-
-	// Add active validators but respect maxContinuingValidators limit
-	activeAdded := int64(0)
-	for i := 0; i < len(shuffledActiveIndices) && activeAdded < maxContinuingValidators && int64(len(selected)) < count; i++ {
-		selected = append(selected, activeValidators[shuffledActiveIndices[i]])
-		activeAdded++
+// Calculate an adaptive minimum weight threshold using a percentile approach
+func calculateMinWeightThreshold(weightedValidators []weightedValidator) *big.Int {
+	if len(weightedValidators) == 0 {
+		return big.NewInt(0)
 	}
 
-	// If we still need more validators after using up our inactive and maxContinuingValidators active ones,
-	// add remaining inactive validators
-	remainingInactiveIndex := minNewValidators
-	for int64(len(selected)) < count && int(remainingInactiveIndex) < len(weightedInactive) {
-		selected = append(selected, weightedInactive[remainingInactiveIndex].validator)
-		remainingInactiveIndex++
+	// Extract weights and sort
+	weights := make([]*big.Int, len(weightedValidators))
+	for i, wv := range weightedValidators {
+		weights[i] = new(big.Int).Set(wv.weight) // Prevent mutation
 	}
+	sort.Slice(weights, func(i, j int) bool {
+		return weights[i].Cmp(weights[j]) < 0
+	})
 
-	// If we somehow still don't have enough (unlikely), we can exceed our maxContinuingValidators
-	// limit and add more active validators
-	for i := int(activeAdded); int64(len(selected)) < count && i < len(shuffledActiveIndices); i++ {
-		selected = append(selected, activeValidators[shuffledActiveIndices[i]])
+	// Define threshold as 25% percentile (more strict than median)
+	percentileIndex := len(weights) / 4
+	if percentileIndex < 1 {
+		percentileIndex = 1
 	}
+	threshold := new(big.Int).Div(weights[percentileIndex], big.NewInt(5)) // Adjust to 20% of 25th percentile
 
-	// Final shuffle of the entire selected set to randomize positions
-	finalIndices := rng.Perm(len(selected))
-	finalSelected := make([]types.Validator, 0, len(selected))
-	for _, idx := range finalIndices {
-		finalSelected = append(finalSelected, selected[idx])
+	// Prevent near-zero thresholds
+	minBaseThreshold := big.NewInt(1000)
+	if threshold.Cmp(minBaseThreshold) < 0 {
+		return minBaseThreshold
 	}
+	return threshold
+}
 
-	return finalSelected
+// Filters out validators with extremely low weight based on dynamic threshold
+func filterLowWeightValidators(weightedValidators []weightedValidator) []weightedValidator {
+	minWeightThreshold := calculateMinWeightThreshold(weightedValidators)
+
+	valid := []weightedValidator{}
+	for _, wv := range weightedValidators {
+		if wv.weight.Cmp(minWeightThreshold) >= 0 {
+			valid = append(valid, wv)
+		}
+	}
+	return valid
+}
+
+// Extracts only the validators from a weighted list
+func extractValidators(weighted []weightedValidator) []types.Validator {
+	validators := make([]types.Validator, 0, len(weighted))
+	for _, wv := range weighted {
+		validators = append(validators, wv.validator)
+	}
+	return validators
+}
+
+// Calculate inactive epochs with safe minimum
+func calculateInactiveEpochs(currentEpoch, lastActiveEpoch uint64) *big.Int {
+	if currentEpoch <= lastActiveEpoch {
+		return big.NewInt(0) // Now correctly returns 0 if they were last active in this epoch
+	}
+	return big.NewInt(int64(currentEpoch - lastActiveEpoch))
+}
+
+// Helper function to calculate total validator tokens
+func calculateTotalValidatorTokens(validators []types.Validator) math.Int {
+	totalTokens := math.ZeroInt()
+	for _, val := range validators {
+		totalTokens = totalTokens.Add(val.GetTokens())
+	}
+	return totalTokens
 }
 
 // isValidatorInList checks if a validator is in the given list
