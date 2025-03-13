@@ -124,7 +124,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 				len(filteredNewCandidates), "current_height", currentHeight, "target_validators", validatorsPerEpoch)
 			k.SetActiveValidatorsForCurrentEpoch(ctx, filteredCurrentEpochValidators)
 			// in case no epoch past already we have to set it for initialization
-			if currentHeight == 0 {
+			if lastEpochHeight == 0 {
 				k.SetLastEpochHeight(ctx, currentHeight)
 			}
 		}
