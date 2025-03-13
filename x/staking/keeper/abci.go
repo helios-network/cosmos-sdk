@@ -85,18 +85,35 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 			filteredCurrentEpochValidators = append(filteredCurrentEpochValidators, validator)
 		}
 	}
-
+	// save in store removed validators
 	k.SetActiveValidatorsForCurrentEpoch(ctx, filteredCurrentEpochValidators)
+
+	// Fetch all bonded validators
+	allBondedValidators := k.GetAllBondedValidators(ctx)
+	filteredNewCandidates := k.filterNewValidators(allBondedValidators, filteredCurrentEpochValidators)
+
 	// Send validators update if not epoch boundary
 	if lastEpochHeight != 0 && currentHeight-lastEpochHeight < epochLength {
+		// if count active validators is less then validators_per_epoch we add any available validators no matter if not in boundary
+		if len(filteredCurrentEpochValidators) < int(validatorsPerEpoch) && len(filteredNewCandidates) > 0 {
+			// fetch all active bonded validators
+			// Add new candidates to the list of active validators
+			filteredCurrentEpochValidators = append(filteredCurrentEpochValidators, filteredNewCandidates...)
+
+			// Update the power of new validators for Tendermint
+			for _, newValidator := range filteredNewCandidates {
+				updates = append(updates, newValidator.ABCIValidatorUpdate(newValidator.GetTokens()))
+			}
+
+			k.Logger(ctx).Info("Automatically added new validators in non-boundary epoch due to insufficient active validators", "new_validators",
+				filteredNewCandidates, "current_height", currentHeight, "target_validators", validatorsPerEpoch)
+			k.SetActiveValidatorsForCurrentEpoch(ctx, filteredCurrentEpochValidators)
+		}
 		return updates, nil
 	}
 
 	// ==== Epoch boundary reached, perform ROLLING rotation ====
 	k.Logger(ctx).Info("Epoch boundary reached", "epoch", currentEpoch, "height", currentHeight)
-
-	// Fetch all bonded validators
-	allBondedValidators := k.GetAllBondedValidators(ctx)
 
 	// Sort validators by stake (lowest first for fair removal)
 	sort.Slice(filteredCurrentEpochValidators, func(i, j int) bool {
@@ -112,18 +129,6 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 	if availableSlots > 0 {
 		numToReplace = availableSlots // Instead of replacing, we add new validators
 		k.Logger(ctx).Info("Filling available slots with new validators", "available_slots", availableSlots)
-	}
-
-	activeValidatorMap := make(map[string]bool)
-	for _, val := range filteredCurrentEpochValidators { // filteredCurrentEpochValidators contains active validators
-		activeValidatorMap[val.GetOperator()] = true
-	}
-
-	filteredNewCandidates := []types.Validator{}
-	for _, val := range allBondedValidators {
-		if _, exists := activeValidatorMap[val.GetOperator()]; !exists {
-			filteredNewCandidates = append(filteredNewCandidates, val) // Only select non-active validators
-		}
 	}
 
 	newEpochValidators := k.selectValidatorsForEpoch(ctx, filteredNewCandidates, int64(numToReplace))

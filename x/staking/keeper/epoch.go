@@ -751,6 +751,24 @@ func (k Keeper) GetAllBondedValidators(ctx context.Context) []types.Validator {
 	return validators
 }
 
+func (k Keeper) filterNewValidators(allBondedValidators []types.Validator, filteredCurrentEpochValidators []types.Validator) []types.Validator {
+	activeValidatorMap := make(map[string]struct{})
+
+	// Create a map of current active validators for O(1) lookups
+	for _, val := range filteredCurrentEpochValidators {
+		activeValidatorMap[val.GetOperator()] = struct{}{}
+	}
+
+	var newValidators []types.Validator
+	for _, val := range allBondedValidators {
+		if _, exists := activeValidatorMap[val.GetOperator()]; !exists {
+			newValidators = append(newValidators, val) // Only select non-active validators
+		}
+	}
+
+	return newValidators
+}
+
 // GETTERS FOR GRPC
 
 // GetCurrentEpochValidators returns the validators in the current epoch
