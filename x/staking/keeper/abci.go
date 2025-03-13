@@ -91,9 +91,22 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 	// Fetch all bonded validators
 	allBondedValidators := k.GetAllBondedValidators(ctx)
 	filteredNewCandidates := k.filterNewValidators(allBondedValidators, filteredCurrentEpochValidators)
+	isEpochBoundary := lastEpochHeight != 0 && currentHeight-lastEpochHeight >= epochLength
+
+	// No new validators and they are all already in current epoch, no need for extra compute
+	if len(filteredCurrentEpochValidators) == len(allBondedValidators) {
+		if isEpochBoundary {
+			k.Logger(ctx).Info("Ignored epoch boundary as current signers already contain all existing active validators, no rotation necessary",
+				"active_validators", len(filteredCurrentEpochValidators),
+				"current_epoch", currentEpoch,
+				"current_height", currentHeight,
+			)
+		}
+		return updates, nil
+	}
 
 	// Send validators update if not epoch boundary
-	if lastEpochHeight != 0 && currentHeight-lastEpochHeight < epochLength {
+	if !isEpochBoundary {
 		// if count active validators is less then validators_per_epoch we add any available validators no matter if not in boundary
 		if len(filteredCurrentEpochValidators) < int(validatorsPerEpoch) && len(filteredNewCandidates) > 0 {
 			// fetch all active bonded validators
@@ -106,7 +119,7 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 			}
 
 			k.Logger(ctx).Info("Automatically added new validators in non-boundary epoch due to insufficient active validators", "new_validators",
-				filteredNewCandidates, "current_height", currentHeight, "target_validators", validatorsPerEpoch)
+				len(filteredNewCandidates), "current_height", currentHeight, "target_validators", validatorsPerEpoch)
 			k.SetActiveValidatorsForCurrentEpoch(ctx, filteredCurrentEpochValidators)
 		}
 		return updates, nil
