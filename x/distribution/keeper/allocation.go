@@ -76,7 +76,6 @@ func (k Keeper) AllocateTokens(ctx context.Context, totalPreviousPower int64, bo
 	// Prepare storage for validator data
 	validatorsData := make([]validatorData, 0, len(bondedVotes))
 	effectiveTotalPower := math.LegacyZeroDec()
-
 	// First part of the single pass: calculate effective powers and accumulate total
 	for _, vote := range bondedVotes {
 		validator, err := k.stakingKeeper.ValidatorByConsAddr(ctx, vote.Validator.Address)
@@ -95,6 +94,14 @@ func (k Keeper) AllocateTokens(ctx context.Context, totalPreviousPower int64, bo
 			// Use original power when stake reduction is disabled
 			effectivePower = math.LegacyNewDec(vote.Validator.Power)
 		}
+
+		// Log the effective power of each validator for debugging
+		sdkCtx := sdk.UnwrapSDKContext(ctx)
+		sdkCtx.Logger().Debug(
+			"validator effective power",
+			"validator", validator.GetOperator(),
+			"effective_power", effectivePower,
+		)
 
 		// Store validator data for the second part
 		validatorsData = append(validatorsData, validatorData{
@@ -262,7 +269,7 @@ func (k Keeper) calculateEffectivePower(ctx context.Context, validator stakingty
 			excessPercentage := excess.Quo(math.LegacyNewDecFromInt(adjustedNetworkStake))
 
 			// Calculate reduction factor based on curve
-			steepnessParam := excessPercentage.Mul(stakingParams.DelegatorStakeReduction.CurveSteepness).Neg()
+			steepnessParam := excessPercentage.Mul(stakingParams.DelegatorStakeReduction.CurveSteepness)
 			oneMinusExp := math.LegacyOneDec().Sub(expNeg(steepnessParam))
 
 			reductionFactor := stakingParams.DelegatorStakeReduction.MaxReduction.Mul(oneMinusExp)

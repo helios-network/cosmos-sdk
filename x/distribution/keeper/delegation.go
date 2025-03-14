@@ -113,7 +113,7 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 			excessPercentage := excess.Quo(math.LegacyNewDecFromInt(adjustedNetworkStake))
 
 			// Calculate reduction factor using our helper
-			steepnessParam := excessPercentage.Mul(stakingParams.DelegatorStakeReduction.CurveSteepness).Neg()
+			steepnessParam := excessPercentage.Mul(stakingParams.DelegatorStakeReduction.CurveSteepness)
 			oneMinusExp := math.LegacyOneDec().Sub(expNeg(steepnessParam))
 
 			reductionFactor := stakingParams.DelegatorStakeReduction.MaxReduction.Mul(oneMinusExp)
