@@ -24,6 +24,18 @@ func NewDelegation(delegatorAddr, validatorAddr string, shares math.LegacyDec) D
 	}
 }
 
+func NewDelegationBoost(delegatorAddr, validatorAddr string, amount math.Int) DelegationBoost {
+	return DelegationBoost{
+		DelegatorAddress: delegatorAddr,
+		ValidatorAddress: validatorAddr,
+		Amount:           amount,
+	}
+}
+
+func MustMarshalDelegationBoost(cdc codec.BinaryCodec, delegationBoost DelegationBoost) []byte {
+	return cdc.MustMarshal(&delegationBoost)
+}
+
 // MustMarshalDelegation returns the delegation bytes. Panics if fails
 func MustMarshalDelegation(cdc codec.BinaryCodec, delegation Delegation) []byte {
 	return cdc.MustMarshal(&delegation)
@@ -38,6 +50,11 @@ func MustUnmarshalDelegation(cdc codec.BinaryCodec, value []byte) Delegation {
 	}
 
 	return delegation
+}
+
+func UnmarshalDelegationBoost(cdc codec.BinaryCodec, value []byte) (delegationBoost DelegationBoost, err error) {
+	err = cdc.Unmarshal(value, &delegationBoost)
+	return delegationBoost, err
 }
 
 // return the delegation

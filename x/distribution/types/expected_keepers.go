@@ -55,8 +55,10 @@ type StakingKeeper interface {
 	GetAllValidators(ctx context.Context) ([]stakingtypes.Validator, error)
 	GetAllDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress) ([]stakingtypes.Delegation, error)
 	GetValidatorDelegations(ctx context.Context, validatorAddr sdk.ValAddress) ([]stakingtypes.Delegation, error)
+	GetValidatorDelegationsBoost(ctx context.Context, validatorAddr sdk.ValAddress) ([]stakingtypes.DelegationBoost, error)
 	GetParams(ctx context.Context) (stakingtypes.Params, error)
 	TotalBondedTokens(context.Context) (math.Int, error)
+	GetTotalBoostedDelegation(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error)
 }
 
 // StakingHooks event hooks for staking validator object (noalias)
