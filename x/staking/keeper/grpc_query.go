@@ -575,10 +575,12 @@ func (k Querier) Pool(ctx context.Context, _ *types.QueryPoolRequest) (*types.Qu
 	}
 	bondedPool := k.GetBondedPool(ctx)
 	notBondedPool := k.GetNotBondedPool(ctx)
+	boostedPool := k.GetBoostedPool(ctx)
 
 	pool := types.NewPool(
 		k.bankKeeper.GetBalance(ctx, notBondedPool.GetAddress(), bondDenom).Amount,
 		k.bankKeeper.GetBalance(ctx, bondedPool.GetAddress(), bondDenom).Amount,
+		k.bankKeeper.GetBalance(ctx, boostedPool.GetAddress(), bondDenom).Amount,
 	)
 
 	return &types.QueryPoolResponse{Pool: pool}, nil

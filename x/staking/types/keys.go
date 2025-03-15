@@ -60,7 +60,7 @@ var (
 	DelegationByValIndexKey      = []byte{0x71} // key for delegations by a validator
 	DelegationBoostByValIndexKey = []byte{0x72} // key for delegations by a validator
 
-	DelegationBoostKey = []byte{0x90} // key for a delegation
+	DelegationBoostKey = []byte{0x90} // key for a boost delegation
 
 )
 

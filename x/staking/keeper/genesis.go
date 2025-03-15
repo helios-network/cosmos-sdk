@@ -20,6 +20,7 @@ import (
 func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res []abci.ValidatorUpdate) {
 	bondedTokens := math.ZeroInt()
 	notBondedTokens := math.ZeroInt()
+	boostedTokens := math.ZeroInt()
 
 	// We need to pretend to be "n blocks before genesis", where "n" is the
 	// validator update delay, so that e.g. slashing periods are correctly
@@ -174,6 +175,14 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 		panic(fmt.Sprintf("not bonded pool balance is different from not bonded coins: %s <-> %s", notBondedBalance, notBondedCoins))
 	}
 
+	for _, boost := range data.DelegationBoosts {
+		if err := k.SetDelegationBoost(ctx, boost); err != nil {
+			panic(fmt.Errorf("error when try to load boost for delegator %s: %w", boost.DelegatorAddress, err))
+		}
+
+		boostedTokens = boostedTokens.Add(boost.Amount)
+	}
+
 	// Retrieve the boosted pool account
 	boostedPool := k.GetBoostedPool(ctx)
 	if boostedPool == nil {
@@ -188,7 +197,6 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 	}
 
 	// Compute expected boosted tokens (adjust this logic as needed)
-	boostedTokens := math.ZeroInt() // Compute the expected boosted tokens here
 	boostedCoins := sdk.NewCoins(sdk.NewCoin(data.Params.BondDenom, boostedTokens))
 
 	// Verify that the boosted pool balance matches the expected boosted coins
@@ -288,7 +296,11 @@ func (k Keeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 		panic(err)
 	}
 
-	// TODO: add boosted pool here
+	allDelegationBoosts, err := k.GetAllDelegationBoosts(ctx)
+	if err != nil {
+		panic(err)
+	}
+
 	return &types.GenesisState{
 		Params:               params,
 		LastTotalPower:       totalPower,
@@ -297,6 +309,7 @@ func (k Keeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 		Delegations:          allDelegations,
 		UnbondingDelegations: unbondingDelegations,
 		Redelegations:        redelegations,
+		DelegationBoosts:     allDelegationBoosts,
 		Exported:             true,
 	}
 }

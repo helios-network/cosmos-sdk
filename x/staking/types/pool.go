@@ -16,9 +16,10 @@ const (
 )
 
 // NewPool creates a new Pool instance used for queries
-func NewPool(notBonded, bonded math.Int) Pool {
+func NewPool(notBonded, bonded, boosted math.Int) Pool {
 	return Pool{
 		NotBondedTokens: notBonded,
 		BondedTokens:    bonded,
+		BoostedTokens:   boosted,
 	}
 }

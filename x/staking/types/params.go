@@ -94,6 +94,9 @@ func DefaultParams() Params {
 			MaxReduction:       DefaultDelegatorStakeReductionMaxReduction,
 			CurveSteepness:     DefaultDelegatorStakeReductionCurveSteepness,
 		},
+		DefaultStakeWeightFactor,
+		DefaultBaselineChanceFactor,
+		DefaultRandomnessFactor,
 		DefaultBoostPercentage,
 	)
 }

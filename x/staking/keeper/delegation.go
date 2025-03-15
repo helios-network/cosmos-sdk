@@ -1010,6 +1010,33 @@ func (k Keeper) DelegateBoost(
 	return math.LegacyZeroDec(), nil
 }
 
+// GetAllDelegationBoosts retrieves all stored delegation boost records.
+// It iterates over the KVStore using the prefix defined by types.DelegationBoostKey
+// and returns a slice of types.DelegationBoost.
+func (k Keeper) GetAllDelegationBoosts(ctx context.Context) ([]types.DelegationBoost, error) {
+	var delegationBoosts []types.DelegationBoost
+	// Open the key-value store.
+	store := k.storeService.OpenKVStore(ctx)
+	// Create an iterator for all keys with the DelegationBoostKey prefix.
+	iterator, err := store.Iterator(types.DelegationBoostKey, storetypes.PrefixEndBytes(types.DelegationBoostKey))
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+
+	// Iterate through all matching keys.
+	for ; iterator.Valid(); iterator.Next() {
+		// Unmarshal the value into a DelegationBoost struct.
+		boost, err := types.UnmarshalDelegationBoost(k.cdc, iterator.Value())
+		if err != nil {
+			return nil, err
+		}
+		// Append the boost record to the slice.
+		delegationBoosts = append(delegationBoosts, boost)
+	}
+	return delegationBoosts, nil
+}
+
 func (k Keeper) UnDelegateBoost(
 	ctx context.Context,
 	delAddr sdk.AccAddress,
