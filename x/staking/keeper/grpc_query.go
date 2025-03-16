@@ -440,6 +440,29 @@ func (k Querier) DelegatorValidator(ctx context.Context, req *types.QueryDelegat
 	return &types.QueryDelegatorValidatorResponse{Validator: validator}, nil
 }
 
+func (k Querier) TotalBoostedDelegation(ctx context.Context, req *types.QueryTotalBoostedDelegationRequest) (*types.QueryTotalBoostedDelegationResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+	if req.ValidatorAddr == "" {
+		return nil, status.Error(codes.InvalidArgument, "validator address cannot be empty")
+	}
+
+	valAddr, err := k.validatorAddressCodec.StringToBytes(req.ValidatorAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	totalBoost, err := k.GetTotalBoostedDelegation(ctx, valAddr)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryTotalBoostedDelegationResponse{
+		TotalBoost: totalBoost.String(),
+	}, nil
+}
+
 // DelegatorUnbondingDelegations queries all unbonding delegations of a given delegator address
 func (k Querier) DelegatorUnbondingDelegations(ctx context.Context, req *types.QueryDelegatorUnbondingDelegationsRequest) (*types.QueryDelegatorUnbondingDelegationsResponse, error) {
 	if req == nil {
