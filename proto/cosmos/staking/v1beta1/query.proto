@@ -184,6 +184,12 @@ service Query {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/epoch_enabled";
   }
+
+  // TotalBoostedDelegation queries the total boosted delegation for a given validator.
+  rpc TotalBoostedDelegation(QueryTotalBoostedDelegationRequest) returns (QueryTotalBoostedDelegationResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/{validator_addr}/total_boost";
+  }
 }
 
 // QueryValidatorsRequest is request type for Query/Validators RPC method.
@@ -547,4 +553,16 @@ message QueryIsEpochEnabledRequest {}
 // QueryIsEpochEnabledResponse is the response type for the Query/IsEpochEnabled RPC method
 message QueryIsEpochEnabledResponse {
   bool epoch_enabled = 1;
+}
+
+// QueryTotalBoostedDelegationRequest is the request type for the Query/TotalBoostedDelegation RPC method.
+message QueryTotalBoostedDelegationRequest {
+  // validator_addr defines the validator address to query.
+  string validator_addr = 1 [(cosmos_proto.scalar) = "cosmos.ValidatorAddressString"];
+}
+
+// QueryTotalBoostedDelegationResponse is the response type for the Query/TotalBoostedDelegation RPC method.
+message QueryTotalBoostedDelegationResponse {
+  // total_boost defines the total boosted delegation amount for the validator.
+  string total_boost = 1;
 }
