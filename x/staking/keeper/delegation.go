@@ -1117,7 +1117,12 @@ func (k Keeper) Delegate(
 		return math.LegacyZeroDec(), err
 	}
 
-	if validator.MinDelegation.GT(math.NewInt(0)) {
+	valOperator, err := sdk.ValAddressFromBech32(validator.GetOperator())
+	if err != nil {
+		return math.LegacyZeroDec(), err
+	}
+
+	if validator.MinDelegation.GT(math.NewInt(0)) && !valOperator.Equals(sdk.ValAddress(delAddr)) {
 		delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
 		if err != nil {
 			return math.LegacyZeroDec(), fmt.Errorf("failed to retrieve delegation boost: %w", err)
