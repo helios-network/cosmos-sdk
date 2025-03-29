@@ -1,4 +1,4 @@
-VERSION=${VERSION:-"v0.50.10-helios-70"}
+VERSION=${VERSION:-"v0.50.10-helios-71"}
 
 echo "Deploy Store"
 git tag math/$VERSION
@@ -70,6 +70,8 @@ go mod edit -replace cosmossdk.io/x/evidence=github.com/Helios-Chain-Labs/cosmos
 go mod edit -replace cosmossdk.io/x/feegrant=github.com/Helios-Chain-Labs/cosmos-sdk/x/feegrant@$VERSION
 go mod edit -replace cosmossdk.io/x/upgrade=github.com/Helios-Chain-Labs/cosmos-sdk/x/upgrade@$VERSION
 go mod tidy
+
+sleep 5
 
 echo "Deploy cosmos-sdk"
 git add .
