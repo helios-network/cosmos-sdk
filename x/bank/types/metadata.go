@@ -1,8 +1,11 @@
 package types
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"image"
 	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -30,6 +33,10 @@ func (m Metadata) Validate() error {
 
 	if err := sdk.ValidateDenom(m.Display); err != nil {
 		return fmt.Errorf("invalid metadata display denom: %w", err)
+	}
+
+	if err := m.ValidateBase64Logo(); err != nil {
+		return fmt.Errorf("invalid metadata: %w", err)
 	}
 
 	var (
@@ -94,6 +101,39 @@ func (du DenomUnit) Validate() error {
 		}
 
 		seenAliases[alias] = true
+	}
+
+	return nil
+}
+
+func (m Metadata) ValidateBase64Logo() error {
+	const maxLogoSizeBytes = 50 * 1024 // 50 KB
+
+	if m.Logo == "" {
+		return nil
+	}
+	// 1. Check the Size
+	if len(m.Logo) > (maxLogoSizeBytes * 4 / 3) { // Base64 emplify the size by ~33%
+		return errors.New("logo is too large, must be under 50KB base64-encoded")
+	}
+
+	// 2. Decoding the base64
+	data, err := base64.StdEncoding.DecodeString(m.Logo)
+	if err != nil {
+		return errors.New("logo is not valid base64")
+	}
+
+	// 3. Check PNG format
+	img, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil || format != "png" {
+		return errors.New("logo must be a valid PNG image")
+	}
+
+	// 4. Check the picture size
+	bounds := img.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width > 200 || height > 200 {
+		return errors.New("logo must be 200x200 pixels or smaller")
 	}
 
 	return nil
