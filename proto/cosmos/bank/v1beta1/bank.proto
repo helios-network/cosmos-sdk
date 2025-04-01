@@ -126,4 +126,8 @@ message Metadata {
   //
   // Since: cosmos-sdk 0.50
   uint32 decimals = 9;
+  // Logo represent the base64 logo in png format with size 200x200 on chain.
+  // Optional.
+  // Since: cosmos-sdk v0.50.10-helios-72
+  string logo = 10;
 }

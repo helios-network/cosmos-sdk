@@ -3428,7 +3428,6 @@ func _Query_TotalBoostedDelegation_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
-var Query_serviceDesc = _Query_serviceDesc
 var _Query_serviceDesc = grpc.ServiceDesc{
 	ServiceName: "cosmos.staking.v1beta1.Query",
 	HandlerType: (*QueryServer)(nil),
