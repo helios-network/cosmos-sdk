@@ -1,11 +1,9 @@
 package types
 
 import (
-	"bytes"
-	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"image"
 	"strings"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -35,7 +33,7 @@ func (m Metadata) Validate() error {
 		return fmt.Errorf("invalid metadata display denom: %w", err)
 	}
 
-	if err := m.ValidateBase64Logo(); err != nil {
+	if err := m.ValidateLogoHash(); err != nil {
 		return fmt.Errorf("invalid metadata: %w", err)
 	}
 
@@ -106,34 +104,20 @@ func (du DenomUnit) Validate() error {
 	return nil
 }
 
-func (m Metadata) ValidateBase64Logo() error {
-	const maxLogoSizeBytes = 50 * 1024 // 50 KB
+func (m Metadata) ValidateLogoHash() error {
 
 	if m.Logo == "" {
 		return nil
 	}
-	// 1. Check the Size
-	if len(m.Logo) > (maxLogoSizeBytes * 4 / 3) { // Base64 emplify the size by ~33%
-		return errors.New("logo is too large, must be under 50KB base64-encoded")
+	// 1. Check the Size sha256 e54d6dfe01574d30b0a8d7a8f83d7da95e90dcee636f7a8342c0d28cad92a8e3
+	if len(m.Logo) != 64 { // 64 is the length of the sha256 hash
+		return errors.New("logo is not a valid sha256 hash")
 	}
 
-	// 2. Decoding the base64
-	data, err := base64.StdEncoding.DecodeString(m.Logo)
-	if err != nil {
-		return errors.New("logo is not valid base64")
-	}
-
-	// 3. Check PNG format
-	img, format, err := image.Decode(bytes.NewReader(data))
-	if err != nil || format != "png" {
-		return errors.New("logo must be a valid PNG image")
-	}
-
-	// 4. Check the picture size
-	bounds := img.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	if width > 200 || height > 200 {
-		return errors.New("logo must be 200x200 pixels or smaller")
+	// 2. Check the logo hash is correct
+	// check the m.logo is well an hex string
+	if _, err := hex.DecodeString(m.Logo); err != nil {
+		return errors.New("logo is not a valid hex string")
 	}
 
 	return nil
