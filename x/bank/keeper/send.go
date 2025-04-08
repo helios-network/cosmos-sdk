@@ -234,6 +234,7 @@ func (k BaseSendKeeper) sendCoin(ctx context.Context, fromAddr, toAddr sdk.AccAd
 	// such as delegated fee messages.
 	accExists := k.ak.HasAccount(ctx, toAddr)
 	if !accExists {
+
 		defer telemetry.IncrCounter(1, "new", "account")
 		k.ak.SetAccount(ctx, k.ak.NewAccountWithAddress(ctx, toAddr))
 	}
@@ -302,6 +303,14 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 		if err := k.setBalance(ctx, addr, newBalance); err != nil {
 			return err
 		}
+
+		if balance.IsZero() && !newBalance.IsZero() { // new holder
+			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
+			k.HoldersCount.Set(ctx, balance.Denom, count+1)
+		} else if !balance.IsZero() && newBalance.IsZero() { // last holder
+			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
+			k.HoldersCount.Set(ctx, balance.Denom, count-1)
+		}
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -330,6 +339,14 @@ func (k BaseSendKeeper) addCoins(ctx context.Context, addr sdk.AccAddress, amt s
 		err := k.setBalance(ctx, addr, newBalance)
 		if err != nil {
 			return err
+		}
+
+		if balance.IsZero() && !newBalance.IsZero() { // new holder
+			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
+			k.HoldersCount.Set(ctx, balance.Denom, count+1)
+		} else if !balance.IsZero() && newBalance.IsZero() { // last holder
+			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
+			k.HoldersCount.Set(ctx, balance.Denom, count-1)
 		}
 	}
 
@@ -361,7 +378,6 @@ func (k BaseSendKeeper) setBalance(ctx context.Context, addr sdk.AccAddress, bal
 
 	// set transient balance which will be emitted in the Endblocker
 	k.setTransientBalance(sdk.UnwrapSDKContext(ctx), addr, balance)
-
 	return k.Balances.Set(ctx, collections.Join(addr, balance.Denom), balance.Amount)
 }
 

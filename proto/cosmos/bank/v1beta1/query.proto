@@ -96,6 +96,26 @@ service Query {
     option (google.api.http).get               = "/cosmos/bank/v1beta1/denoms_metadata";
   }
 
+  // DenomFullMetadata queries the client metadata of a given coin denomination.
+  rpc DenomFullMetadata(QueryDenomFullMetadataRequest) returns (QueryDenomFullMetadataResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/bank/v1beta1/denoms_full_metadata/{denom}";
+  }
+
+  // DenomFullMetadataByQueryString queries the client metadata of a given coin denomination.
+  rpc DenomFullMetadataByQueryString(QueryDenomFullMetadataByQueryStringRequest)
+      returns (QueryDenomFullMetadataByQueryStringResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/bank/v1beta1/denoms_full_metadata_by_query_string";
+  }
+
+  // DenomsFullMetadata queries the client metadata for all registered coin
+  // denominations.
+  rpc DenomsFullMetadata(QueryDenomsFullMetadataRequest) returns (QueryDenomsFullMetadataResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/bank/v1beta1/denoms_full_metadata";
+  }
+
   // DenomOwners queries for all account addresses that own a particular token
   // denomination.
   //
@@ -338,6 +358,53 @@ message QueryDenomMetadataByQueryStringResponse {
   // metadata describes and provides all the client information for the requested token.
   Metadata metadata = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
+
+/// FullMetadata
+
+// QueryDenomsFullMetadataRequest is the request type for the Query/DenomsFullMetadata RPC method.
+message QueryDenomsFullMetadataRequest {
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryDenomsFullMetadataResponse is the response type for the Query/DenomsFullMetadata RPC
+// method.
+message QueryDenomsFullMetadataResponse {
+  // metadata provides the client information for all the registered tokens.
+  repeated FullMetadata metadatas = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // pagination defines the pagination in the response.
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryDenomFullMetadataRequest is the request type for the Query/DenomFullMetadata RPC method.
+message QueryDenomFullMetadataRequest {
+  // denom is the coin denom to query the metadata for.
+  string denom = 1;
+}
+
+// QueryDenomFullMetadataResponse is the response type for the Query/DenomFullMetadata RPC
+// method.
+message QueryDenomFullMetadataResponse {
+  // metadata describes and provides all the client information for the requested token.
+  FullMetadata metadata = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+// QueryDenomFullMetadataByQueryStringRequest is the request type for the Query/DenomFullMetadata RPC method.
+// Identical with QueryDenomFullMetadataRequest but receives denom as query string.
+message QueryDenomFullMetadataByQueryStringRequest {
+  // denom is the coin denom to query the metadata for.
+  string denom = 1;
+}
+
+// QueryDenomFullMetadataByQueryStringResponse is the response type for the Query/DenomFullMetadata RPC
+// method. Identical with QueryDenomFullMetadataResponse but receives denom as query string in request.
+message QueryDenomFullMetadataByQueryStringResponse {
+  // metadata describes and provides all the client information for the requested token.
+  FullMetadata metadata = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+////
 
 // QueryDenomOwnersRequest defines the request type for the DenomOwners RPC query,
 // which queries for a paginated set of all account holders of a particular

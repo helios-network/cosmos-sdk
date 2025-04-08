@@ -35,6 +35,9 @@ var (
 
 	// ParamsKey is the prefix for x/bank parameters
 	ParamsKey = collections.NewPrefix(5)
+
+	// HoldersCountKey is the prefix for the holders count for a Denom.
+	HoldersCountKey = collections.NewPrefix(6)
 )
 
 // BalanceValueCodec is a codec for encoding bank balances in a backwards compatible way.

@@ -239,6 +239,82 @@ func (k BaseKeeper) DenomMetadataByQueryString(c context.Context, req *types.Que
 	return &types.QueryDenomMetadataByQueryStringResponse{Metadata: res.Metadata}, nil
 }
 
+// DenomsFullMetadata implements Query/DenomsFullMetadata gRPC method.
+func (k BaseKeeper) DenomsFullMetadata(c context.Context, req *types.QueryDenomsFullMetadataRequest) (*types.QueryDenomsFullMetadataResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+	kvStore := runtime.KVStoreAdapter(k.storeService.OpenKVStore(c))
+	store := prefix.NewStore(kvStore, types.DenomMetadataPrefix)
+
+	metadatas := []types.FullMetadata{}
+	pageRes, err := query.Paginate(store, req.Pagination, func(_, value []byte) error {
+		var metadata types.Metadata
+		k.cdc.MustUnmarshal(value, &metadata)
+
+		holdersCount, _ := k.HoldersCount.Get(c, metadata.Base)
+
+		metadatas = append(metadatas, types.FullMetadata{
+			Metadata:     &metadata,
+			TotalSupply:  k.GetSupply(c, metadata.Base).Amount,
+			HoldersCount: holdersCount,
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryDenomsFullMetadataResponse{
+		Metadatas:  metadatas,
+		Pagination: pageRes,
+	}, nil
+}
+
+// DenomFullMetadata implements Query/DenomFullMetadata gRPC method.
+func (k BaseKeeper) DenomFullMetadata(c context.Context, req *types.QueryDenomFullMetadataRequest) (*types.QueryDenomFullMetadataResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	if err := sdk.ValidateDenom(req.Denom); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	ctx := sdk.UnwrapSDKContext(c)
+
+	metadata, found := k.GetDenomMetaData(ctx, req.Denom)
+	if !found {
+		return nil, status.Errorf(codes.NotFound, "client metadata for denom %s", req.Denom)
+	}
+
+	holdersCount, _ := k.HoldersCount.Get(c, metadata.Base)
+
+	return &types.QueryDenomFullMetadataResponse{
+		Metadata: types.FullMetadata{
+			Metadata:     &metadata,
+			TotalSupply:  k.GetSupply(c, metadata.Base).Amount,
+			HoldersCount: holdersCount,
+		},
+	}, nil
+}
+
+// DenomFullMetadataByQueryString is identical to DenomFullMetadata query, but receives request via query string.
+func (k BaseKeeper) DenomFullMetadataByQueryString(c context.Context, req *types.QueryDenomFullMetadataByQueryStringRequest) (*types.QueryDenomFullMetadataByQueryStringResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	res, err := k.DenomFullMetadata(c, &types.QueryDenomFullMetadataRequest{
+		Denom: req.Denom,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.QueryDenomFullMetadataByQueryStringResponse{Metadata: res.Metadata}, nil
+}
+
 func (k BaseKeeper) DenomOwners(
 	ctx context.Context,
 	req *types.QueryDenomOwnersRequest,
@@ -281,14 +357,7 @@ func (k BaseKeeper) DenomOwnersCount(ctx context.Context, req *types.QueryDenomO
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	var count uint64
-	err := k.Balances.Indexes.Denom.Walk(ctx,
-		collections.NewPrefixedPairRange[string, sdk.AccAddress](req.Denom),
-		func(indexingKey string, indexedKey sdk.AccAddress) (stop bool, err error) {
-			count++
-			return false, nil // Continue l'itération
-		},
-	)
+	count, err := k.HoldersCount.Get(ctx, req.Denom)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to count denom owners: %v", err)
 	}

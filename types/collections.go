@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"cosmossdk.io/collections"
@@ -31,6 +32,9 @@ var (
 
 	// IntValue represents a collections.ValueCodec to work with Int.
 	IntValue collcodec.ValueCodec[math.Int] = intValueCodec{}
+
+	// Uint64Value represents a collections.ValueCodec to work with uint64.
+	Uint64Value collcodec.ValueCodec[uint64] = uint64ValueCodec{}
 
 	// TimeKey represents a collections.KeyCodec to work with time.Time
 	// Deprecated: exists only for state compatibility reasons, should not
@@ -164,6 +168,32 @@ func (i intValueCodec) Stringify(value math.Int) string {
 
 func (i intValueCodec) ValueType() string {
 	return "math.Int"
+}
+
+type uint64ValueCodec struct{}
+
+func (u uint64ValueCodec) Encode(value uint64) ([]byte, error) {
+	return Uint64ToBigEndian(value), nil
+}
+
+func (u uint64ValueCodec) Decode(b []byte) (uint64, error) {
+	return BigEndianToUint64(b), nil
+}
+
+func (u uint64ValueCodec) EncodeJSON(value uint64) ([]byte, error) {
+	return []byte(strconv.FormatUint(value, 10)), nil
+}
+
+func (u uint64ValueCodec) DecodeJSON(b []byte) (uint64, error) {
+	return strconv.ParseUint(string(b), 10, 64)
+}
+
+func (u uint64ValueCodec) Stringify(value uint64) string {
+	return strconv.FormatUint(value, 10)
+}
+
+func (u uint64ValueCodec) ValueType() string {
+	return "uint64"
 }
 
 type timeKeyCodec struct{}

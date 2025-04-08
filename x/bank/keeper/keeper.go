@@ -533,6 +533,16 @@ func (k BaseKeeper) setSupply(ctx context.Context, coin sdk.Coin) {
 	}
 }
 
+func (k BaseKeeper) updateHoldersCount(ctx context.Context, denom string, remove bool) {
+	if remove {
+		count, _ := k.HoldersCount.Get(ctx, denom)
+		_ = k.HoldersCount.Set(ctx, denom, count-1)
+	} else {
+		count, _ := k.HoldersCount.Get(ctx, denom)
+		_ = k.HoldersCount.Set(ctx, denom, count+1)
+	}
+}
+
 // trackDelegation tracks the delegation of the given account if it is a vesting account
 func (k BaseKeeper) trackDelegation(ctx context.Context, addr sdk.AccAddress, balance, amt sdk.Coins) error {
 	acc := k.ak.GetAccount(ctx, addr)

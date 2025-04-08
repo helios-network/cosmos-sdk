@@ -131,3 +131,14 @@ message Metadata {
   // Since: cosmos-sdk v0.50.10-helios-72
   string logo = 10;
 }
+
+message FullMetadata {
+  Metadata metadata = 1;
+  uint64 holders_count = 2;
+  string total_supply = 3 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = false,
+    (amino.dont_omitempty) = true
+  ];
+}
