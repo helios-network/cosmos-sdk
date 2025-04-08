@@ -128,6 +128,16 @@ service Query {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/bank/v1beta1/send_enabled";
   }
+
+  // DenomOwnersCount returns the total number of addresses holding a specific denomination
+  //
+  // This query is used to count the number of addresses holding a specific denomination.
+  //
+  // Since: cosmos-sdk 0.50.3
+  rpc DenomOwnersCount(QueryDenomOwnersCountRequest) returns (QueryDenomOwnersCountResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get = "/cosmos/bank/v1beta1/denom_owners_count/{denom}";
+  }
 }
 
 // QueryBalanceRequest is the request type for the Query/Balance RPC method.
@@ -405,4 +415,16 @@ message QuerySendEnabledResponse {
   // pagination defines the pagination in the response. This field is only
   // populated if the denoms field in the request is empty.
   cosmos.base.query.v1beta1.PageResponse pagination = 99;
+}
+
+// QueryDenomOwnersCountRequest defines the request for the DenomOwnersCount query
+message QueryDenomOwnersCountRequest {
+  // denom defines the coin denomination to query all account holders for.
+  string denom = 1;
+}
+
+// QueryDenomOwnersCountResponse defines the response for the DenomOwnersCount query
+message QueryDenomOwnersCountResponse {
+  // count defines the total number of addresses holding the denomination.
+  uint64 count = 1;
 }

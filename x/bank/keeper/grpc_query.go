@@ -271,6 +271,31 @@ func (k BaseKeeper) DenomOwners(
 	return &types.QueryDenomOwnersResponse{DenomOwners: denomOwners, Pagination: pageRes}, nil
 }
 
+// DenomOwnersCount returns the total number of addresses holding a specific denomination
+func (k BaseKeeper) DenomOwnersCount(ctx context.Context, req *types.QueryDenomOwnersCountRequest) (*types.QueryDenomOwnersCountResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	if err := sdk.ValidateDenom(req.Denom); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	var count uint64
+	err := k.Balances.Indexes.Denom.Walk(ctx,
+		collections.NewPrefixedPairRange[string, sdk.AccAddress](req.Denom),
+		func(indexingKey string, indexedKey sdk.AccAddress) (stop bool, err error) {
+			count++
+			return false, nil // Continue l'itération
+		},
+	)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to count denom owners: %v", err)
+	}
+
+	return &types.QueryDenomOwnersCountResponse{Count: count}, nil
+}
+
 func (k BaseKeeper) SendEnabled(goCtx context.Context, req *types.QuerySendEnabledRequest) (*types.QuerySendEnabledResponse, error) {
 	if req == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "empty request")
