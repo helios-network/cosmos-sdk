@@ -59,20 +59,25 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	balances, pageRes, err := query.CollectionPaginate(
+
+	balances := []sdk.Coin{}
+
+	pageRes, err := k.BaseViewKeeper.IterateAccountBalancesByHoldersCount(
 		ctx,
-		k.Balances,
+		addr,
 		req.Pagination,
-		func(key collections.Pair[sdk.AccAddress, string], value math.Int) (sdk.Coin, error) {
+		func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool {
 			if req.ResolveDenom {
-				if metadata, ok := k.GetDenomMetaData(sdkCtx, key.K2()); ok {
-					return sdk.NewCoin(metadata.Display, value), nil
+				if metadata, ok := k.GetDenomMetaData(sdkCtx, coin.Denom); ok {
+					balances = append(balances, sdk.NewCoin(metadata.Display, coin.Amount))
+					return true
 				}
 			}
-			return sdk.NewCoin(key.K2(), value), nil
+			balances = append(balances, coin)
+			return true
 		},
-		query.WithCollectionPaginationPairPrefix[sdk.AccAddress, string](addr),
 	)
+
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "paginate: %v", err)
 	}

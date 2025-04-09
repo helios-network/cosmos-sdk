@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"cosmossdk.io/collections"
@@ -14,6 +15,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	"github.com/cosmos/cosmos-sdk/types/query"
 	"github.com/cosmos/cosmos-sdk/x/bank/types"
 )
 
@@ -255,4 +257,56 @@ func (k BaseViewKeeper) ValidateBalance(ctx context.Context, addr sdk.AccAddress
 	}
 
 	return nil
+}
+
+// IterateAccountBalancesByHoldersCount iterates over the balances of a single account and
+// provides the token balance to a callback. If true is returned from the
+// callback, iteration is halted.
+func (k BaseViewKeeper) IterateAccountBalancesByHoldersCount(
+	ctx context.Context,
+	addr sdk.AccAddress,
+	pageReq *query.PageRequest,
+	cb func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool,
+) (*query.PageResponse, error) {
+	// If a specific address is provided, we use a specific approach
+	return k.iterateBalancesByHoldersCountForAddress(ctx, addr, pageReq, cb)
+}
+
+// iterateBalancesByHoldersCountForAddress optimized for a specific address
+func (k BaseViewKeeper) iterateBalancesByHoldersCountForAddress(
+	ctx context.Context,
+	addr sdk.AccAddress,
+	pageReq *query.PageRequest,
+	cb func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool,
+) (*query.PageResponse, error) {
+	// Use HoldersSortedIndex to get the denoms sorted by holders count
+	// and filter to keep only those that the specified address holds
+	_, pageRes, err := query.CollectionPaginate(
+		ctx,
+		k.HoldersSortedIndex,
+		pageReq,
+		func(key collections.Pair[uint64, string], _ bool) (bool, error) {
+			denom := key.K2()
+			holdersCount := ^key.K1() // Get the true number (inverted for sorting)
+
+			// Check if this address holds this denom
+			amt, err := k.Balances.Get(ctx, collections.Join(addr, denom))
+			if err != nil {
+				// If the error is "not found", ignore this denom
+				if errors.Is(err, collections.ErrNotFound) {
+					return false, nil
+				}
+				return false, err
+			}
+
+			// The address holds this denom, call the callback
+			if !amt.IsZero() {
+				return cb(addr, sdk.NewCoin(denom, amt), holdersCount), nil
+			}
+
+			return false, nil
+		},
+	)
+
+	return pageRes, err
 }
