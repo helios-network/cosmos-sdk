@@ -36,6 +36,9 @@ var (
 	// Uint64Value represents a collections.ValueCodec to work with uint64.
 	Uint64Value collcodec.ValueCodec[uint64] = uint64ValueCodec{}
 
+	// StringValue represents a collections.ValueCodec to work with string.
+	StringValue collcodec.ValueCodec[string] = stringValueCodec{}
+
 	// TimeKey represents a collections.KeyCodec to work with time.Time
 	// Deprecated: exists only for state compatibility reasons, should not
 	// be used for new storage keys using time. Please use the time KeyCodec
@@ -194,6 +197,32 @@ func (u uint64ValueCodec) Stringify(value uint64) string {
 
 func (u uint64ValueCodec) ValueType() string {
 	return "uint64"
+}
+
+type stringValueCodec struct{}
+
+func (s stringValueCodec) Encode(value string) ([]byte, error) {
+	return []byte(value), nil
+}
+
+func (s stringValueCodec) Decode(b []byte) (string, error) {
+	return string(b), nil
+}
+
+func (s stringValueCodec) EncodeJSON(value string) ([]byte, error) {
+	return []byte(value), nil
+}
+
+func (s stringValueCodec) DecodeJSON(b []byte) (string, error) {
+	return string(b), nil
+}
+
+func (s stringValueCodec) Stringify(value string) string {
+	return value
+}
+
+func (s stringValueCodec) ValueType() string {
+	return "string"
 }
 
 type timeKeyCodec struct{}

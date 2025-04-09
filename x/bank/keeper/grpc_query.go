@@ -244,29 +244,30 @@ func (k BaseKeeper) DenomsFullMetadata(c context.Context, req *types.QueryDenoms
 	if req == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "empty request")
 	}
-	kvStore := runtime.KVStoreAdapter(k.storeService.OpenKVStore(c))
-	store := prefix.NewStore(kvStore, types.DenomMetadataPrefix)
 
-	metadatas := []types.FullMetadata{}
-	pageRes, err := query.Paginate(store, req.Pagination, func(_, value []byte) error {
-		var metadata types.Metadata
-		k.cdc.MustUnmarshal(value, &metadata)
+	metadataList, pageRes, err := query.CollectionPaginate(
+		c,
+		k.HoldersSortedIndex,
+		req.Pagination,
+		func(key collections.Pair[uint64, string], _ bool) (types.FullMetadata, error) {
+			denom := key.K2()
+			metadata, _ := k.GetDenomMetaData(c, denom)
+			holdersCount := ^key.K1()
 
-		holdersCount, _ := k.HoldersCount.Get(c, metadata.Base)
+			return types.FullMetadata{
+				Metadata:     &metadata,
+				TotalSupply:  k.GetSupply(c, metadata.Base).Amount,
+				HoldersCount: holdersCount,
+			}, nil
+		},
+	)
 
-		metadatas = append(metadatas, types.FullMetadata{
-			Metadata:     &metadata,
-			TotalSupply:  k.GetSupply(c, metadata.Base).Amount,
-			HoldersCount: holdersCount,
-		})
-		return nil
-	})
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
 	}
 
 	return &types.QueryDenomsFullMetadataResponse{
-		Metadatas:  metadatas,
+		Metadatas:  metadataList,
 		Pagination: pageRes,
 	}, nil
 }

@@ -38,6 +38,9 @@ var (
 
 	// HoldersCountKey is the prefix for the holders count for a Denom.
 	HoldersCountKey = collections.NewPrefix(6)
+
+	// HoldersSortedIndexKey is the prefix for the holders sorted index for a Denom.
+	HoldersSortedIndexKey = collections.NewPrefix(7)
 )
 
 // BalanceValueCodec is a codec for encoding bank balances in a backwards compatible way.

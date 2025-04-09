@@ -304,13 +304,7 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 			return err
 		}
 
-		if balance.IsZero() && !newBalance.IsZero() { // new holder
-			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
-			k.HoldersCount.Set(ctx, balance.Denom, count+1)
-		} else if !balance.IsZero() && newBalance.IsZero() { // last holder
-			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
-			k.HoldersCount.Set(ctx, balance.Denom, count-1)
-		}
+		k.updateHoldersCount(ctx, balance, newBalance)
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -319,6 +313,37 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 	)
 
 	return nil
+}
+
+func (k BaseSendKeeper) updateHoldersCount(ctx context.Context, balance sdk.Coin, newBalance sdk.Coin) {
+	if balance.IsZero() && !newBalance.IsZero() { // new holder
+		oldCount, _ := k.HoldersCount.Get(ctx, balance.Denom)
+		newCount := oldCount + 1
+
+		// Mettre à jour le compteur
+		k.HoldersCount.Set(ctx, balance.Denom, newCount)
+
+		// Supprimer l'ancienne entrée dans l'index si elle existe
+		if oldCount > 0 {
+			k.HoldersSortedIndex.Remove(ctx, collections.Join(^uint64(oldCount), balance.Denom))
+		}
+
+		// Ajouter la nouvelle entrée (utiliser ^count pour trier par ordre décroissant)
+		k.HoldersSortedIndex.Set(ctx, collections.Join(^uint64(newCount), balance.Denom), true)
+	} else if !balance.IsZero() && newBalance.IsZero() { // last holder
+		oldCount, _ := k.HoldersCount.Get(ctx, balance.Denom)
+		newCount := oldCount - 1
+
+		// Mettre à jour le compteur
+		k.HoldersCount.Set(ctx, balance.Denom, newCount)
+		// Supprimer l'ancienne entrée
+		k.HoldersSortedIndex.Remove(ctx, collections.Join(^uint64(oldCount), balance.Denom))
+
+		// Ajouter la nouvelle entrée si > 0
+		if newCount > 0 {
+			k.HoldersSortedIndex.Set(ctx, collections.Join(^uint64(newCount), balance.Denom), true)
+		}
+	}
 }
 
 func (k BaseSendKeeper) SafeTransferTreasury(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error {
@@ -341,13 +366,7 @@ func (k BaseSendKeeper) addCoins(ctx context.Context, addr sdk.AccAddress, amt s
 			return err
 		}
 
-		if balance.IsZero() && !newBalance.IsZero() { // new holder
-			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
-			k.HoldersCount.Set(ctx, balance.Denom, count+1)
-		} else if !balance.IsZero() && newBalance.IsZero() { // last holder
-			count, _ := k.HoldersCount.Get(ctx, balance.Denom)
-			k.HoldersCount.Set(ctx, balance.Denom, count-1)
-		}
+		k.updateHoldersCount(ctx, balance, newBalance)
 	}
 
 	// emit coin received event
