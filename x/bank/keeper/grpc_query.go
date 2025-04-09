@@ -73,6 +73,12 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 					return true
 				}
 			}
+			if req.ResolveSymbol {
+				if metadata, ok := k.GetDenomMetaData(sdkCtx, coin.Denom); ok {
+					balances = append(balances, sdk.NewCoin(metadata.Symbol, coin.Amount))
+					return true
+				}
+			}
 			balances = append(balances, coin)
 			return true
 		},
@@ -83,6 +89,47 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 	}
 
 	return &types.QueryAllBalancesResponse{Balances: balances, Pagination: pageRes}, nil
+}
+
+func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.QueryAllBalancesWithFullMetadataRequest) (*types.QueryAllBalancesWithFullMetadataResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	addr, err := k.ak.AddressCodec().StringToBytes(req.Address)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid address: %s", err.Error())
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	balances := []*types.TokenBalanceWithFullMetadata{}
+
+	pageRes, err := k.BaseViewKeeper.IterateAccountBalancesByHoldersCount(
+		ctx,
+		addr,
+		req.Pagination,
+		func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool {
+
+			fullMetadata, err := k.DenomFullMetadata(sdkCtx, &types.QueryDenomFullMetadataRequest{
+				Denom: coin.Denom,
+			})
+			if err != nil {
+				return false
+			}
+			balances = append(balances, &types.TokenBalanceWithFullMetadata{
+				FullMetadata: &fullMetadata.Metadata,
+				Balance:      coin.Amount,
+			})
+			return true
+		},
+	)
+
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "paginate: %v", err)
+	}
+
+	return &types.QueryAllBalancesWithFullMetadataResponse{Balances: balances, Pagination: pageRes}, nil
 }
 
 // SpendableBalances implements a gRPC query handler for retrieving an account's
