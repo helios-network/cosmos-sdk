@@ -69,7 +69,8 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 	for _, validator := range currentEpochValidators {
 		// Remove jailed/unbonded validators
 		if validator.IsJailed() || validator.GetStatus() != types.Bonded {
-			updates = append(updates, validator.ABCIValidatorUpdateZero()) // Remove from Tendermint
+			k.Logger(ctx).Info("Removing validator from Tendermint cause Jailed/Unbonded", "operator", validator.GetOperator())
+			updates = append(updates, validator.ABCIValidatorUpdateZero())
 		} else {
 			consAddrBytes, err := validator.GetConsAddr()
 			if err != nil || len(consAddrBytes) == 0 {
