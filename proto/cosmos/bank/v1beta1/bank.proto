@@ -93,12 +93,19 @@ message DenomUnit {
   repeated string aliases = 3;
 }
 
+message OriginChainMetadata {
+  uint64 chain_id = 1 [(gogoproto.jsontag) = "chainId"];
+  string symbol = 2;
+  uint32 decimals = 3;
+  string contract_address = 4 [(gogoproto.jsontag) = "contractAddress"];
+}
+
 // Metadata represents a struct that describes
 // a basic token.
 message Metadata {
   string description = 1;
   // denom_units represents the list of DenomUnit's for a given coin
-  repeated DenomUnit denom_units = 2;
+  repeated DenomUnit denom_units = 2 [(gogoproto.jsontag) = "denomUnits"];
   // base represents the base denom (should be the DenomUnit with exponent = 0).
   string base = 3;
   // display indicates the suggested denom that should be
@@ -131,15 +138,20 @@ message Metadata {
   // Since: cosmos-sdk v0.50.10-helios-72
   string logo = 10;
 
-  // pair_contract is the contract address of the pair
+  // contract_address is the contract address of the token
   // Optional.
   // Since: cosmos-sdk v0.50.10-helios-74
-  string pair_contract = 11;
+  string contract_address = 11;
+
+  // from_chain is the chain id of the origin chain
+  // Optional.
+  // Since: cosmos-sdk v0.50.10-helios-76
+  OriginChainMetadata origin_chain_metadata = 12 [(gogoproto.jsontag) = "originChainMetadata"];
 }
 
 message FullMetadata {
   Metadata metadata = 1;
-  uint64 holders_count = 2;
+  uint64 holders_count = 2 [(gogoproto.jsontag) = "holdersCount"];
   string total_supply = 3 [
     (cosmos_proto.scalar)  = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
@@ -149,7 +161,7 @@ message FullMetadata {
 }
 
 message TokenBalanceWithFullMetadata {
-  FullMetadata full_metadata = 1;
+  FullMetadata full_metadata = 1 [(gogoproto.jsontag) = "fullMetadata"];
   string balance = 2 [
     (cosmos_proto.scalar)  = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
