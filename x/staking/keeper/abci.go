@@ -254,6 +254,11 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 		),
 	)
 
+	//making sure the network stays alive
+	updates, err = k.ensureNonEmptyValidatorSet(ctx, updates, currentHeight, currentEpoch)
+	if err != nil {
+		return nil, err
+	}
 	return updates, nil
 }
 
@@ -312,4 +317,70 @@ func removeExistingUpdate(updates []abci.ValidatorUpdate, consAddrBytes []byte) 
 		}
 	}
 	return filteredUpdates
+}
+
+// ensureNonEmptyValidatorSet makes sure we don't return an empty validator set update.
+// If the update would cause an empty set, it falls back to selecting up to validatorsPerEpoch bonded validators.
+func (k Keeper) ensureNonEmptyValidatorSet(
+	ctx context.Context,
+	updates []abci.ValidatorUpdate,
+	currentHeight uint64,
+	currentEpoch uint64,
+) ([]abci.ValidatorUpdate, error) {
+	hasNonZeroPower := false
+	for _, update := range updates {
+		if update.Power > 0 {
+			hasNonZeroPower = true
+			break
+		}
+	}
+
+	if hasNonZeroPower {
+		return updates, nil // No fallback needed
+	}
+
+	k.Logger(ctx).Error("Validator update would result in an empty validator set – triggering fallback")
+
+	// Fallback: load all bonded non-jailed validators
+	validatorsPerEpoch := k.GetValidatorsPerEpoch(ctx)
+	allBonded := k.GetAllBondedValidators(ctx)
+	nonJailedBonded := filterBondedNonJailedValidators(allBonded)
+
+	if len(nonJailedBonded) == 0 {
+		k.Logger(ctx).Error("Fallback failed: no bonded non-jailed validators available")
+		return nil, fmt.Errorf("fallback failed: no bonded non-jailed validators available")
+	}
+
+	// Limit to validatorsPerEpoch max
+	if len(nonJailedBonded) > int(validatorsPerEpoch) {
+		nonJailedBonded = nonJailedBonded[:validatorsPerEpoch]
+	}
+
+	// Create validator updates from fallback list
+	newUpdates := make([]abci.ValidatorUpdate, 0, len(nonJailedBonded))
+	for _, val := range nonJailedBonded {
+		newUpdates = append(newUpdates, val.ABCIValidatorUpdate(val.GetTokens()))
+	}
+
+	// Save the fallback validator set
+	k.SetActiveValidatorsForCurrentEpoch(ctx, nonJailedBonded)
+	k.SetCurrentEpoch(ctx, currentEpoch+1)
+	k.SetLastEpochHeight(ctx, currentHeight)
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	sdkCtx.EventManager().EmitEvent(
+		sdk.NewEvent(
+			"epoch_fallback",
+			sdk.NewAttribute("epoch_number", fmt.Sprintf("%d", currentEpoch+1)),
+			sdk.NewAttribute("height", fmt.Sprintf("%d", currentHeight)),
+			sdk.NewAttribute("reason", "empty_validator_set_prevented"),
+			sdk.NewAttribute("restored_validators", fmt.Sprintf("%d", len(nonJailedBonded))),
+		),
+	)
+
+	k.Logger(ctx).Info("Fallback applied: restored validator set from bonded validators",
+		"validator_count", len(nonJailedBonded),
+	)
+
+	return newUpdates, nil
 }
