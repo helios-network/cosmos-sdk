@@ -93,11 +93,12 @@ message DenomUnit {
   repeated string aliases = 3;
 }
 
-message OriginChainMetadata {
+message ChainMetadata {
   uint64 chain_id = 1 [(gogoproto.jsontag) = "chainId"];
   string symbol = 2;
   uint32 decimals = 3;
   string contract_address = 4 [(gogoproto.jsontag) = "contractAddress"];
+  bool is_originated = 5 [(gogoproto.jsontag) = "isOriginated"];
 }
 
 // Metadata represents a struct that describes
@@ -143,10 +144,10 @@ message Metadata {
   // Since: cosmos-sdk v0.50.10-helios-74
   string contract_address = 11;
 
-  // from_chain is the chain id of the origin chain
+  // chains_metadatas is the list of chain metadata
   // Optional.
   // Since: cosmos-sdk v0.50.10-helios-76
-  OriginChainMetadata origin_chain_metadata = 12 [(gogoproto.jsontag) = "originChainMetadata"];
+  repeated ChainMetadata chains_metadatas = 12 [(gogoproto.jsontag) = "chainsMetadatas"];
 }
 
 message FullMetadata {

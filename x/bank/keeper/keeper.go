@@ -335,29 +335,33 @@ func (k BaseKeeper) IterateAllDenomMetaData(ctx context.Context, cb func(types.M
 func (k BaseKeeper) SetDenomMetaData(ctx context.Context, denomMetaData types.Metadata) {
 	_ = k.BaseViewKeeper.DenomMetadata.Set(ctx, denomMetaData.Base, denomMetaData)
 
-	if denomMetaData.OriginChainMetadata != nil {
-		k.setOriginChainMetadataKeyIndex(ctx, denomMetaData.OriginChainMetadata, denomMetaData.Base)
+	if len(denomMetaData.ChainsMetadatas) > 0 {
+		for _, chainMetadata := range denomMetaData.ChainsMetadatas {
+			k.setChainMetadataKeyIndex(ctx, chainMetadata, denomMetaData.Base)
+		}
 
 		holdersCount, _ := k.HoldersCount.Get(ctx, denomMetaData.Base)
 		if holdersCount > 0 {
-			k.ChainHoldersIndex.Set(ctx, collections.Join3(
-				denomMetaData.OriginChainMetadata.ChainId,
-				^uint64(holdersCount),
-				denomMetaData.Base,
-			), true)
+			for _, chainMetadata := range denomMetaData.ChainsMetadatas {
+				k.ChainHoldersIndex.Set(ctx, collections.Join3(
+					chainMetadata.ChainId,
+					^uint64(holdersCount),
+					denomMetaData.Base,
+				), true)
+			}
 		}
 	}
 }
 
-func (k BaseKeeper) setOriginChainMetadataKeyIndex(ctx context.Context, originChainMetadata *types.OriginChainMetadata, denom string) {
+func (k BaseKeeper) setChainMetadataKeyIndex(ctx context.Context, chainMetadata *types.ChainMetadata, denom string) {
 	// Check that the chainId is defined
-	if originChainMetadata.ChainId == 0 {
+	if chainMetadata.ChainId == 0 {
 		return
 	}
 
 	// Add to the index chainId -> denom
 	_ = k.OriginChainIndex.Set(ctx,
-		collections.Join(originChainMetadata.ChainId, originChainMetadata.ContractAddress),
+		collections.Join(chainMetadata.ChainId, chainMetadata.ContractAddress),
 		denom)
 }
 

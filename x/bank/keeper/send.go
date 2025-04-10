@@ -330,23 +330,27 @@ func (k BaseSendKeeper) updateHoldersCount(ctx context.Context, balance sdk.Coin
 
 		// Add the new entry (use ^count to sort by descending order)
 		k.HoldersSortedIndex.Set(ctx, collections.Join(^uint64(newCount), balance.Denom), true)
-		metadata, err := k.BaseViewKeeper.DenomMetadata.Get(ctx, balance.Denom)
-		if err == nil && metadata.OriginChainMetadata != nil && metadata.OriginChainMetadata.ChainId != 0 {
-			// Delete the old entry
-			if oldCount > 0 {
-				k.ChainHoldersIndex.Remove(ctx, collections.Join3(
-					metadata.OriginChainMetadata.ChainId,
-					^uint64(oldCount),
-					balance.Denom,
-				))
-			}
 
-			// Add the new entry
-			k.ChainHoldersIndex.Set(ctx, collections.Join3(
-				metadata.OriginChainMetadata.ChainId,
-				^uint64(newCount),
-				balance.Denom,
-			), true)
+		// Update the chain holders index
+		metadata, err := k.BaseViewKeeper.DenomMetadata.Get(ctx, balance.Denom)
+		if err == nil && len(metadata.ChainsMetadatas) > 0 {
+			for _, chainMetadata := range metadata.ChainsMetadatas {
+				// Delete the old entry
+				if oldCount > 0 {
+					k.ChainHoldersIndex.Remove(ctx, collections.Join3(
+						chainMetadata.ChainId,
+						^uint64(oldCount),
+						balance.Denom,
+					))
+				}
+
+				// Add the new entry
+				k.ChainHoldersIndex.Set(ctx, collections.Join3(
+					chainMetadata.ChainId,
+					^uint64(newCount),
+					balance.Denom,
+				), true)
+			}
 		}
 	} else if !balance.IsZero() && newBalance.IsZero() { // last holder
 		oldCount, _ := k.HoldersCount.Get(ctx, balance.Denom)
@@ -362,22 +366,25 @@ func (k BaseSendKeeper) updateHoldersCount(ctx context.Context, balance sdk.Coin
 			k.HoldersSortedIndex.Set(ctx, collections.Join(^uint64(newCount), balance.Denom), true)
 		}
 
+		// Update the chain holders index
 		metadata, err := k.BaseViewKeeper.DenomMetadata.Get(ctx, balance.Denom)
-		if err == nil && metadata.OriginChainMetadata != nil && metadata.OriginChainMetadata.ChainId != 0 {
-			// Delete the old entry
-			k.ChainHoldersIndex.Remove(ctx, collections.Join3(
-				metadata.OriginChainMetadata.ChainId,
-				^uint64(oldCount),
-				balance.Denom,
-			))
-
-			// Add the new entry if > 0
-			if newCount > 0 {
-				k.ChainHoldersIndex.Set(ctx, collections.Join3(
-					metadata.OriginChainMetadata.ChainId,
-					^uint64(newCount),
+		if err == nil && len(metadata.ChainsMetadatas) > 0 {
+			for _, chainMetadata := range metadata.ChainsMetadatas {
+				// Delete the old entry
+				k.ChainHoldersIndex.Remove(ctx, collections.Join3(
+					chainMetadata.ChainId,
+					^uint64(oldCount),
 					balance.Denom,
-				), true)
+				))
+
+				// Add the new entry if > 0
+				if newCount > 0 {
+					k.ChainHoldersIndex.Set(ctx, collections.Join3(
+						chainMetadata.ChainId,
+						^uint64(newCount),
+						balance.Denom,
+					), true)
+				}
 			}
 		}
 	}
