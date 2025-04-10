@@ -68,6 +68,8 @@ type BaseViewKeeper struct {
 	Supply             collections.Map[string, math.Int]
 	HoldersCount       collections.Map[string, uint64]
 	HoldersSortedIndex collections.Map[collections.Pair[uint64, string], bool]
+	OriginChainIndex   collections.Map[collections.Pair[uint64, string], string]
+	ChainHoldersIndex  collections.Map[collections.Triple[uint64, uint64, string], bool]
 	DenomMetadata      collections.Map[string, types.Metadata]
 	SendEnabled        collections.Map[string, bool]
 	Balances           *collections.IndexedMap[collections.Pair[sdk.AccAddress, string], math.Int, BalancesIndexes]
@@ -86,6 +88,8 @@ func NewBaseViewKeeper(cdc codec.BinaryCodec, storeService store.KVStoreService,
 		Supply:             collections.NewMap(sb, types.SupplyKey, "supply", collections.StringKey, sdk.IntValue),
 		HoldersCount:       collections.NewMap(sb, types.HoldersCountKey, "holders_count", collections.StringKey, sdk.Uint64Value),
 		HoldersSortedIndex: collections.NewMap(sb, types.HoldersSortedIndexKey, "holders_sorted_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), codec.BoolValue),
+		OriginChainIndex:   collections.NewMap(sb, types.OriginChainIndexKey, "origin_chain_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), collections.StringValue),
+		ChainHoldersIndex:  collections.NewMap(sb, types.ChainHoldersIndexKey, "chain_holders_index", collections.TripleKeyCodec(collections.Uint64Key, collections.Uint64Key, collections.StringKey), codec.BoolValue),
 		DenomMetadata:      collections.NewMap(sb, types.DenomMetadataPrefix, "denom_metadata", collections.StringKey, codec.CollValue[types.Metadata](cdc)),
 		SendEnabled:        collections.NewMap(sb, types.SendEnabledPrefix, "send_enabled", collections.StringKey, codec.BoolValue), // NOTE: we use a bool value which uses protobuf to retain state backwards compat
 		Balances:           collections.NewIndexedMap(sb, types.BalancesPrefix, "balances", collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey), types.BalanceValueCodec, newBalancesIndexes(sb)),
@@ -257,19 +261,6 @@ func (k BaseViewKeeper) ValidateBalance(ctx context.Context, addr sdk.AccAddress
 	}
 
 	return nil
-}
-
-// IterateAccountBalancesByHoldersCount iterates over the balances of a single account and
-// provides the token balance to a callback. If true is returned from the
-// callback, iteration is halted.
-func (k BaseViewKeeper) IterateAccountBalancesByHoldersCount(
-	ctx context.Context,
-	addr sdk.AccAddress,
-	pageReq *query.PageRequest,
-	cb func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool,
-) (*query.PageResponse, error) {
-	// If a specific address is provided, we use a specific approach
-	return k.iterateBalancesByHoldersCountForAddress(ctx, addr, pageReq, cb)
 }
 
 // iterateBalancesByHoldersCountForAddress optimized for a specific address

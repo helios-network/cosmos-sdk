@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"cosmossdk.io/collections"
 	"cosmossdk.io/core/store"
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
@@ -333,6 +334,31 @@ func (k BaseKeeper) IterateAllDenomMetaData(ctx context.Context, cb func(types.M
 // SetDenomMetaData sets the denominations metadata
 func (k BaseKeeper) SetDenomMetaData(ctx context.Context, denomMetaData types.Metadata) {
 	_ = k.BaseViewKeeper.DenomMetadata.Set(ctx, denomMetaData.Base, denomMetaData)
+
+	if denomMetaData.OriginChainMetadata != nil {
+		k.setOriginChainMetadataKeyIndex(ctx, denomMetaData.OriginChainMetadata, denomMetaData.Base)
+
+		holdersCount, _ := k.HoldersCount.Get(ctx, denomMetaData.Base)
+		if holdersCount > 0 {
+			k.ChainHoldersIndex.Set(ctx, collections.Join3(
+				denomMetaData.OriginChainMetadata.ChainId,
+				^uint64(holdersCount),
+				denomMetaData.Base,
+			), true)
+		}
+	}
+}
+
+func (k BaseKeeper) setOriginChainMetadataKeyIndex(ctx context.Context, originChainMetadata *types.OriginChainMetadata, denom string) {
+	// Check that the chainId is defined
+	if originChainMetadata.ChainId == 0 {
+		return
+	}
+
+	// Add to the index chainId -> denom
+	_ = k.OriginChainIndex.Set(ctx,
+		collections.Join(originChainMetadata.ChainId, originChainMetadata.ContractAddress),
+		denom)
 }
 
 // SendCoinsFromModuleToAccount transfers coins from a ModuleAccount to an AccAddress.

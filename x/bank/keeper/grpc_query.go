@@ -62,7 +62,7 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 
 	balances := []sdk.Coin{}
 
-	pageRes, err := k.BaseViewKeeper.IterateAccountBalancesByHoldersCount(
+	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
 		ctx,
 		addr,
 		req.Pagination,
@@ -105,7 +105,7 @@ func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.
 
 	balances := []*types.TokenBalanceWithFullMetadata{}
 
-	pageRes, err := k.BaseViewKeeper.IterateAccountBalancesByHoldersCount(
+	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
 		ctx,
 		addr,
 		req.Pagination,
@@ -462,4 +462,95 @@ func (k BaseKeeper) DenomOwnersByQuery(ctx context.Context, req *types.QueryDeno
 	}
 
 	return &types.QueryDenomOwnersByQueryResponse{DenomOwners: resp.DenomOwners, Pagination: resp.Pagination}, nil
+}
+
+func (k BaseKeeper) DenomsByChainId(c context.Context, req *types.QueryDenomsByChainIdRequest) (*types.QueryDenomsByChainIdResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	if req.ChainId == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "chain_id cannot be empty")
+	}
+
+	ctx := sdk.UnwrapSDKContext(c)
+
+	// Si l'option de tri par nombre de détenteurs est activée, utiliser l'index optimisé
+	if req.OrderByHoldersCount {
+		// Utiliser ChainHoldersIndex qui est déjà trié par nombre de détenteurs pour chaque chainId
+		denomsList, pageRes, err := query.CollectionPaginate(
+			ctx,
+			k.ChainHoldersIndex,
+			req.Pagination,
+			func(key collections.Triple[uint64, uint64, string], _ bool) (types.FullMetadata, error) {
+				// Vérifier que le chainId correspond
+				if key.K1() != req.ChainId {
+					return types.FullMetadata{}, nil
+				}
+
+				denom := key.K3()
+				holdersCount := ^key.K2() // Inverser pour retrouver le vrai nombre
+
+				// Récupérer les métadonnées complètes
+				metadata, found := k.GetDenomMetaData(ctx, denom)
+				if !found {
+					return types.FullMetadata{}, nil
+				}
+
+				return types.FullMetadata{
+					Metadata:     &metadata,
+					TotalSupply:  k.GetSupply(c, denom).Amount,
+					HoldersCount: holdersCount,
+				}, nil
+			},
+			query.WithCollectionPaginationTriplePrefix[uint64, uint64, string](req.ChainId),
+		)
+
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
+		}
+
+		return &types.QueryDenomsByChainIdResponse{
+			Metadatas:  denomsList,
+			Pagination: pageRes,
+		}, nil
+	}
+
+	// Retrieve the denoms indexed by chainId in a paginated way
+	denomsList, pageRes, err := query.CollectionPaginate(
+		ctx,
+		k.OriginChainIndex,
+		req.Pagination,
+		func(key collections.Pair[uint64, string], value string) (types.FullMetadata, error) {
+			// Check if the first part of the key corresponds to the requested chainId
+			if key.K1() != req.ChainId {
+				return types.FullMetadata{}, nil
+			}
+
+			// Retrieve the full metadata for this denom
+			metadata, found := k.GetDenomMetaData(ctx, value)
+			if !found {
+				return types.FullMetadata{}, nil
+			}
+
+			// Retrieve the number of holders and provide the full metadata
+			holdersCount, _ := k.HoldersCount.Get(c, value)
+
+			return types.FullMetadata{
+				Metadata:     &metadata,
+				TotalSupply:  k.GetSupply(c, value).Amount,
+				HoldersCount: holdersCount,
+			}, nil
+		},
+		query.WithCollectionPaginationPairPrefix[uint64, string](req.ChainId),
+	)
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
+	}
+
+	return &types.QueryDenomsByChainIdResponse{
+		Metadatas:  denomsList,
+		Pagination: pageRes,
+	}, nil
 }

@@ -163,6 +163,12 @@ service Query {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get = "/cosmos/bank/v1beta1/denom_owners_count/{denom}";
   }
+
+  // DenomsByChainId allows to retrieve all the denoms originating from a specific chain
+  rpc DenomsByChainId(QueryDenomsByChainIdRequest) returns (QueryDenomsByChainIdResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get = "/cosmos/bank/v1beta1/denoms_by_chain/{chain_id}";
+  }
 }
 
 // QueryBalanceRequest is the request type for the Query/Balance RPC method.
@@ -517,4 +523,25 @@ message QueryDenomOwnersCountRequest {
 message QueryDenomOwnersCountResponse {
   // count defines the total number of addresses holding the denomination.
   uint64 count = 1;
+}
+
+// QueryDenomsByChainIdRequest is the request for Query/DenomsByChainId
+message QueryDenomsByChainIdRequest {
+  // chainId is the origin chain id to filter
+  uint64 chain_id = 1;
+  
+  // pagination defines an optional pagination for the request
+  cosmos.base.query.v1beta1.PageRequest pagination = 2;
+
+  // order_by_holders_count indicates if the results should be sorted by holders count (descending)
+  bool order_by_holders_count = 3;
+}
+
+// QueryDenomsByChainIdResponse is the response for Query/DenomsByChainId
+message QueryDenomsByChainIdResponse {
+  // metadatas provides the full metadata for all the denoms originating from the specified chain
+  repeated FullMetadata metadatas = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  
+  // pagination defines the pagination in the response
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
 }
