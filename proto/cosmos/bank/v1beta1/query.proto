@@ -237,6 +237,8 @@ message QueryAllBalancesWithFullMetadataRequest {
 message QueryAllBalancesWithFullMetadataResponse {
   repeated TokenBalanceWithFullMetadata balances = 1;
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
+  // total_count defines the total number of balances returned in the response.
+  uint64 total_count = 3 [(gogoproto.moretags) = "yaml:\"total_count\""];
 }
 
 // QuerySpendableBalancesRequest defines the gRPC request structure for querying

@@ -269,6 +269,7 @@ var xxx_messageInfo_QueryAllBalancesWithFullMetadataRequest proto.InternalMessag
 type QueryAllBalancesWithFullMetadataResponse struct {
 	Balances   []*TokenBalanceWithFullMetadata `protobuf:"bytes,1,rep,name=balances,proto3" json:"balances,omitempty"`
 	Pagination *query.PageResponse             `protobuf:"bytes,2,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	TotalCount uint64	`protobuf:"varint,1,opt,name=total_count,proto3" json:"total_count,omitempty"`
 }
 
 func (m *QueryAllBalancesWithFullMetadataResponse) Reset() {

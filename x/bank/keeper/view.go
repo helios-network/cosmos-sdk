@@ -269,10 +269,10 @@ func (k BaseViewKeeper) iterateBalancesByHoldersCountForAddress(
 	addr sdk.AccAddress,
 	pageReq *query.PageRequest,
 	cb func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool,
-) (*query.PageResponse, error) {
+) (uint64, *query.PageResponse, error) {
 	// Use HoldersSortedIndex to get the denoms sorted by holders count
 	// and filter to keep only those that the specified address holds
-	_, pageRes, err := query.CollectionPaginate(
+	results, pageRes, err := query.CollectionPaginate(
 		ctx,
 		k.HoldersSortedIndex,
 		pageReq,
@@ -299,5 +299,12 @@ func (k BaseViewKeeper) iterateBalancesByHoldersCountForAddress(
 		},
 	)
 
-	return pageRes, err
+	count := uint64(0)
+	for _, result := range results {
+		if result {
+			count++
+		}
+	}
+
+	return count, pageRes, err
 }
