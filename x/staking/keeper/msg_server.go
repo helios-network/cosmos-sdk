@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"bytes"
 	"context"
 	"strconv"
 	"time"
@@ -291,7 +292,7 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 		return nil, err
 	}
 
-	if msg.DelegatorAddress != msg.ValidatorAddress && !validator.DelegateAuthorization {
+	if !bytes.Equal(valAddr, delegatorAddress) && !validator.DelegateAuthorization {
 		return nil, sdkerrors.ErrUnauthorized.Wrap("delegation not authorized: delegator is not the validator and delegate authorization is false")
 	}
 
