@@ -67,6 +67,7 @@ type BaseViewKeeper struct {
 	Schema             collections.Schema
 	Supply             collections.Map[string, math.Int]
 	HoldersCount       collections.Map[string, uint64]
+	TokensCount		   collections.Map[string, uint64]
 	HoldersSortedIndex collections.Map[collections.Pair[uint64, string], bool]
 	OriginChainIndex   collections.Map[collections.Pair[uint64, string], string]
 	ChainHoldersIndex  collections.Map[collections.Triple[uint64, uint64, string], bool]
@@ -269,10 +270,10 @@ func (k BaseViewKeeper) iterateBalancesByHoldersCountForAddress(
 	addr sdk.AccAddress,
 	pageReq *query.PageRequest,
 	cb func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool,
-) (uint64, *query.PageResponse, error) {
+) (*query.PageResponse, error) {
 	// Use HoldersSortedIndex to get the denoms sorted by holders count
 	// and filter to keep only those that the specified address holds
-	results, pageRes, err := query.CollectionPaginate(
+	_, pageRes, err := query.CollectionPaginate(
 		ctx,
 		k.HoldersSortedIndex,
 		pageReq,
@@ -299,12 +300,5 @@ func (k BaseViewKeeper) iterateBalancesByHoldersCountForAddress(
 		},
 	)
 
-	count := uint64(0)
-	for _, result := range results {
-		if result {
-			count++
-		}
-	}
-
-	return count, pageRes, err
+	return pageRes, err
 }

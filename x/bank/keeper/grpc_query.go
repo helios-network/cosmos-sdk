@@ -62,7 +62,7 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 
 	balances := []sdk.Coin{}
 
-	_, pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
+	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
 		ctx,
 		addr,
 		req.Pagination,
@@ -105,7 +105,7 @@ func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.
 
 	balances := []*types.TokenBalanceWithFullMetadata{}
 
-	_, pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
+	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
 		ctx,
 		addr,
 		req.Pagination,
@@ -129,28 +129,11 @@ func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.
 		return nil, status.Errorf(codes.InvalidArgument, "paginate: %v", err)
 	}
 
-	totalCount, _, _ := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
-		ctx,
-		addr,
-		&query.PageRequest{
-			Offset: 0,
-			Limit:  pageRes.Total,
-		},
-		func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool {
+	totalCount, err := k.BaseViewKeeper.TokensCount.Get(ctx, req.Address)
 
-			fullMetadata, err := k.DenomFullMetadata(sdkCtx, &types.QueryDenomFullMetadataRequest{
-				Denom: coin.Denom,
-			})
-			if err != nil {
-				return false
-			}
-			balances = append(balances, &types.TokenBalanceWithFullMetadata{
-				FullMetadata: &fullMetadata.Metadata,
-				Balance:      coin.Amount,
-			})
-			return true
-		},
-	)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "totalCount: %v", err)
+	}
 
 	return &types.QueryAllBalancesWithFullMetadataResponse{Balances: balances, Pagination: pageRes, TotalCount: totalCount}, nil
 }
