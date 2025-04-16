@@ -172,6 +172,49 @@ func (k Keeper) Slash(ctx context.Context, consAddr sdk.ConsAddress, infractionH
 		}
 	}
 
+	// Map to store slashed assets in real values
+	slashedAssets := make(map[string]sdk.Coin)
+
+	// Adjust Asset Weights Based on Slashing
+	delegations, err := k.GetValidatorDelegations(ctx, sdk.ValAddress(operatorAddress))
+	if err != nil {
+		return math.NewInt(0), fmt.Errorf("failed to get delegations for validator: %w", err)
+	}
+
+	for i, delegation := range delegations {
+		totalDelegationDiff := math.ZeroInt()
+		for denom, assetWeight := range delegation.AssetWeights {
+			// Convert WeightedAmount to Dec before multiplying with slashFactor
+			reductionAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(slashFactor).TruncateInt()
+			assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(reductionAmount)
+
+			if assetWeight.WeightedAmount.IsZero() {
+				delete(delegation.AssetWeights, denom)
+			} else {
+				delegation.AssetWeights[denom] = assetWeight
+			}
+			totalDelegationDiff = totalDelegationDiff.Add(reductionAmount)
+
+			// add into slashed assets
+			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, denom, reductionAmount)
+			if err != nil {
+				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", denom, "error", err)
+				continue
+			}
+
+			slashedAssets[denom] = realAssetSlashed
+		}
+		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Sub(totalDelegationDiff)
+		delegations[i] = delegation
+		k.SetDelegation(ctx, delegation)
+	}
+
+	// Send slashed assets directly to the treasury helios wallet
+	err = k.collectSlashedAssets(sdkCtx, validator.GetOperator(), slashedAssets)
+	if err != nil {
+		logger.Error("Failed to collect slashed assets for treasury", "error", err)
+	}
+
 	// Deduct from validator's bonded tokens and update the validator.
 	// Burn the slashed tokens from the pool account and decrease the total supply.
 	validator, err = k.RemoveValidatorTokens(ctx, validator, tokensToBurn)
@@ -242,7 +285,10 @@ func (k Keeper) SlashUnbondingDelegation(ctx context.Context, unbondingDelegatio
 	totalSlashAmount = math.ZeroInt()
 	burnedAmount := math.ZeroInt()
 
-	// perform slashing on all entries within the unbonding delegation
+	// Map to store slashed assets in real values
+	slashedAssets := make(map[string]sdk.Coin)
+
+	// Perform slashing on all entries within the unbonding delegation
 	for i, entry := range unbondingDelegation.Entries {
 		// If unbonding started before this height, stake didn't contribute to infraction
 		if entry.CreationHeight < infractionHeight {
@@ -260,9 +306,6 @@ func (k Keeper) SlashUnbondingDelegation(ctx context.Context, unbondingDelegatio
 		totalSlashAmount = totalSlashAmount.Add(slashAmount)
 
 		// Don't slash more tokens than held
-		// Possible since the unbonding delegation may already
-		// have been slashed, and slash amounts are calculated
-		// according to stake held at time of infraction
 		unbondingSlashAmount := math.MinInt(slashAmount, entry.Balance)
 
 		// Update unbonding delegation if necessary
@@ -276,6 +319,53 @@ func (k Keeper) SlashUnbondingDelegation(ctx context.Context, unbondingDelegatio
 		if err = k.SetUnbondingDelegation(ctx, unbondingDelegation); err != nil {
 			return math.ZeroInt(), err
 		}
+
+		// NEW: Handle asset weights
+		// Get the delegation for the delegator and validator
+		delegatorAddr, err := sdk.AccAddressFromBech32(unbondingDelegation.DelegatorAddress)
+		if err != nil {
+			return math.ZeroInt(), err
+		}
+		validatorAddr, err := sdk.ValAddressFromBech32(unbondingDelegation.ValidatorAddress)
+		if err != nil {
+			return math.ZeroInt(), err
+		}
+
+		delegation, err := k.GetDelegation(ctx, delegatorAddr, validatorAddr)
+		if err != nil {
+			continue
+		}
+
+		// Adjust Asset Weights
+		for denom, assetWeight := range delegation.AssetWeights {
+			// Convert WeightedAmount to Dec before multiplying with slashFactor
+			reductionAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(slashFactor).TruncateInt()
+			assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(reductionAmount)
+
+			if assetWeight.WeightedAmount.IsZero() {
+				delete(delegation.AssetWeights, denom)
+			} else {
+				delegation.AssetWeights[denom] = assetWeight
+			}
+
+			// add into slashed assets
+			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, denom, reductionAmount)
+			if err != nil {
+				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", denom, "error", err)
+				continue
+			}
+
+			slashedAssets[denom] = realAssetSlashed
+		}
+
+		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Sub(totalSlashAmount)
+		k.SetDelegation(ctx, delegation)
+	}
+
+	// Send slashed assets directly to the treasury helios wallet
+	err = k.collectSlashedAssets(sdkCtx, unbondingDelegation.ValidatorAddress, slashedAssets)
+	if err != nil {
+		k.Logger(ctx).Error("Failed to collect slashed assets for treasury", "error", err)
 	}
 
 	if err := k.burnNotBondedTokens(ctx, burnedAmount); err != nil {
@@ -298,6 +388,9 @@ func (k Keeper) SlashRedelegation(ctx context.Context, srcValidator types.Valida
 	now := sdkCtx.BlockHeader().Time
 	totalSlashAmount = math.ZeroInt()
 	bondedBurnedAmount, notBondedBurnedAmount := math.ZeroInt(), math.ZeroInt()
+
+	// Map to store slashed assets in real values
+	slashedAssets := make(map[string]sdk.Coin)
 
 	valDstAddr, err := k.validatorAddressCodec.StringToBytes(redelegation.ValidatorDstAddress)
 	if err != nil {
@@ -401,14 +494,54 @@ func (k Keeper) SlashRedelegation(ctx context.Context, srcValidator types.Valida
 		default:
 			panic("unknown validator status")
 		}
+
+		// NEW: Adjust Asset Weights and Collect Slashed Assets
+		for denom, assetWeight := range delegation.AssetWeights {
+			// Convert WeightedAmount to Dec before multiplying with slashFactor
+			reductionAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(slashFactor).TruncateInt()
+			assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(reductionAmount)
+
+			if assetWeight.WeightedAmount.IsZero() {
+				delete(delegation.AssetWeights, denom)
+			} else {
+				delegation.AssetWeights[denom] = assetWeight
+			}
+
+			// add into slashed assets
+			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, denom, reductionAmount)
+			if err != nil {
+				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", denom, "error", err)
+				continue
+			}
+
+			// Accumulate slashed assets
+			if existingCoin, ok := slashedAssets[denom]; ok {
+				slashedAssets[denom] = existingCoin.Add(realAssetSlashed)
+			} else {
+				slashedAssets[denom] = realAssetSlashed
+			}
+		}
+
+		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Sub(totalSlashAmount)
+		k.SetDelegation(ctx, delegation)
 	}
 
+	// Burn tokens based on validator status
 	if err := k.burnBondedTokens(ctx, bondedBurnedAmount); err != nil {
 		return math.ZeroInt(), err
 	}
 
 	if err := k.burnNotBondedTokens(ctx, notBondedBurnedAmount); err != nil {
 		return math.ZeroInt(), err
+	}
+
+	// Send slashed assets directly to the treasury helios wallet
+	// Use the destination validator address for collecting slashed assets
+	err = k.collectSlashedAssets(sdkCtx, redelegation.ValidatorDstAddress, slashedAssets)
+	if err != nil {
+		k.Logger(ctx).Error("Failed to collect slashed assets for treasury",
+			"validator", redelegation.ValidatorDstAddress,
+			"error", err)
 	}
 
 	return totalSlashAmount, nil

@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,6 +31,10 @@ func (m Metadata) Validate() error {
 
 	if err := sdk.ValidateDenom(m.Display); err != nil {
 		return fmt.Errorf("invalid metadata display denom: %w", err)
+	}
+
+	if err := m.ValidateLogoHash(); err != nil {
+		return fmt.Errorf("invalid metadata: %w", err)
 	}
 
 	var (
@@ -94,6 +99,25 @@ func (du DenomUnit) Validate() error {
 		}
 
 		seenAliases[alias] = true
+	}
+
+	return nil
+}
+
+func (m Metadata) ValidateLogoHash() error {
+
+	if m.Logo == "" {
+		return nil
+	}
+	// 1. Check the Size sha256 e54d6dfe01574d30b0a8d7a8f83d7da95e90dcee636f7a8342c0d28cad92a8e3
+	if len(m.Logo) != 64 { // 64 is the length of the sha256 hash
+		return errors.New("logo is not a valid sha256 hash")
+	}
+
+	// 2. Check the logo hash is correct
+	// check the m.logo is well an hex string
+	if _, err := hex.DecodeString(m.Logo); err != nil {
+		return errors.New("logo is not a valid hex string")
 	}
 
 	return nil

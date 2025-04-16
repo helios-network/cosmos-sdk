@@ -1,15 +1,14 @@
 syntax = "proto3";
 package cosmos.staking.v1beta1;
 
+import "amino/amino.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "cosmos/msg/v1/msg.proto";
+import "cosmos/staking/v1beta1/staking.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/timestamp.proto";
-import "gogoproto/gogo.proto";
-
-import "cosmos_proto/cosmos.proto";
-import "cosmos/base/v1beta1/coin.proto";
-import "cosmos/staking/v1beta1/staking.proto";
-import "cosmos/msg/v1/msg.proto";
-import "amino/amino.proto";
 
 option go_package = "github.com/cosmos/cosmos-sdk/x/staking/types";
 
@@ -70,6 +69,12 @@ message MsgCreateValidator {
   string                   validator_address = 5 [(cosmos_proto.scalar) = "cosmos.ValidatorAddressString"];
   google.protobuf.Any      pubkey            = 6 [(cosmos_proto.accepts_interface) = "cosmos.crypto.PubKey"];
   cosmos.base.v1beta1.Coin value             = 7 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  string                   min_delegation    = 8 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = false,
+    (amino.dont_omitempty) = true
+  ];
 }
 
 // MsgCreateValidatorResponse defines the Msg/CreateValidator response type.
@@ -94,6 +99,8 @@ message MsgEditValidator {
       [(cosmos_proto.scalar) = "cosmos.Dec", (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"];
   string min_self_delegation = 4
       [(cosmos_proto.scalar) = "cosmos.Int", (gogoproto.customtype) = "cosmossdk.io/math.Int"];
+  string min_delegation = 5 [(cosmos_proto.scalar) = "cosmos.Int", (gogoproto.customtype) = "cosmossdk.io/math.Int"];
+  bool   delegate_authorization = 6 [(amino.dont_omitempty) = true];
 }
 
 // MsgEditValidatorResponse defines the Msg/EditValidator response type.
@@ -197,10 +204,10 @@ message MsgUpdateParams {
   //
   // NOTE: All parameters must be supplied.
   Params params = 2 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
-};
+}
 
 // MsgUpdateParamsResponse defines the response structure for executing a
 // MsgUpdateParams message.
 //
 // Since: cosmos-sdk 0.47
-message MsgUpdateParamsResponse {};
+message MsgUpdateParamsResponse {}

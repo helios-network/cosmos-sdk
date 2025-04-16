@@ -230,6 +230,7 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		in.StoreService,
 		in.AccountKeeper,
 		in.BankKeeper,
+		nil,
 		authority.String(),
 		in.ValidatorAddressCodec,
 		in.ConsensusAddressCodec,

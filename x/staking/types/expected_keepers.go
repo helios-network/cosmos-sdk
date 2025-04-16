@@ -35,10 +35,25 @@ type BankKeeper interface {
 	GetSupply(ctx context.Context, denom string) sdk.Coin
 
 	SendCoinsFromModuleToModule(ctx context.Context, senderPool, recipientPool string, amt sdk.Coins) error
+	SendCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
 	UndelegateCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
+	UndelegateErc20FromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coin, erc20 sdk.Coin) error
 	DelegateCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
-
+	DelegateErc20FromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins, burnCoin sdk.Coin) error
+	SendCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
 	BurnCoins(ctx context.Context, name string, amt sdk.Coins) error
+	SafeTransferTreasury(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error
+}
+
+// Erc20Asset defines the properties of an ERC20 asset without directly importing Helios types.
+type Erc20Asset interface {
+	GetDenom() string
+	GetContractAddress() string
+	GetBaseWeight() uint64
+}
+
+type Erc20Keeper interface {
+	GetAllStakingAssets(ctx sdk.Context) []Erc20Asset
 }
 
 // ValidatorSet expected properties for the set of all validators (noalias)
@@ -58,7 +73,7 @@ type ValidatorSet interface {
 	Validator(context.Context, sdk.ValAddress) (ValidatorI, error)            // get a particular validator by operator address
 	ValidatorByConsAddr(context.Context, sdk.ConsAddress) (ValidatorI, error) // get a particular validator by consensus address
 	TotalBondedTokens(context.Context) (math.Int, error)                      // total bonded tokens within the validator set
-	StakingTokenSupply(context.Context) (math.Int, error)                     // total staking token supply
+	TotalHeliosSupply(context.Context) (math.Int, error)                      // total staking token supply
 
 	// slash the validator and delegators of the validator, specifying offense height, offense power, and slash fraction
 	Slash(context.Context, sdk.ConsAddress, int64, int64, math.LegacyDec) (math.Int, error)

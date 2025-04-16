@@ -2,11 +2,13 @@ package keeper
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"cosmossdk.io/math"
 	"cosmossdk.io/store/prefix"
 	storetypes "cosmossdk.io/store/types"
 
@@ -60,6 +62,69 @@ func (k Querier) Validators(ctx context.Context, req *types.QueryValidatorsReque
 	}
 
 	return &types.QueryValidatorsResponse{Validators: vals.Validators, Pagination: pageRes}, nil
+}
+
+func (k Querier) ShareRepartitionMap(ctx context.Context, req *types.QueryShareRepartitionMapRequest) (*types.QueryShareRepartitionMapResponse, error) {
+	res, err := k.Validators(ctx, &types.QueryValidatorsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	shareRepartitionMap := map[string]types.SharesRepartition{}
+	stakingAssets := k.erc20Keeper.GetAllStakingAssets(sdk.UnwrapSDKContext(ctx))
+	for _, consensusAsset := range stakingAssets {
+		shareRepartitionMap[consensusAsset.GetDenom()] = types.SharesRepartition{
+			Denom:                         consensusAsset.GetDenom(),
+			ContractAddress:               consensusAsset.GetContractAddress(),
+			BaseWeight:                    consensusAsset.GetBaseWeight(),
+			NetworkShares:                 math.NewIntFromUint64(0),
+			NetworkPercentageSecurisation: "0%",
+		}
+	}
+
+	for _, validator := range res.Validators {
+		delegationsRes, err := k.ValidatorDelegations(ctx, &types.QueryValidatorDelegationsRequest{ValidatorAddr: validator.OperatorAddress})
+		if err != nil {
+			continue
+		}
+		for _, delegationRes := range delegationsRes.DelegationResponses {
+			delegation := delegationRes.GetDelegation()
+			for _, asset := range delegation.AssetWeights {
+				shareRepartition, exists := shareRepartitionMap[asset.Denom]
+				if !exists {
+					continue
+				}
+				shareRepartition.NetworkShares = shareRepartition.NetworkShares.Add(asset.WeightedAmount)
+
+				sdk.UnwrapSDKContext(ctx).Logger().Info("Asset", "asset.WeightedAmount", asset.WeightedAmount, "shareRepartition.NetworkShares", shareRepartition.NetworkShares)
+				shareRepartitionMap[asset.Denom] = shareRepartition
+			}
+		}
+	}
+
+	totalShares := math.NewIntFromUint64(0)
+	for _, consensusAsset := range stakingAssets {
+		shareRepartition, exists := shareRepartitionMap[consensusAsset.GetDenom()]
+		if !exists {
+			continue
+		}
+		totalShares = totalShares.Add(shareRepartition.NetworkShares)
+	}
+
+	for _, consensusAsset := range stakingAssets {
+		shareRepartition, exists := shareRepartitionMap[consensusAsset.GetDenom()]
+		if !exists {
+			continue
+		}
+		if totalShares.LTE(math.NewIntFromUint64(0)) {
+			shareRepartition.NetworkPercentageSecurisation = "0%"
+			continue
+		}
+		percentage := shareRepartitionMap[consensusAsset.GetDenom()].NetworkShares.ToLegacyDec().Mul(math.NewIntFromUint64(uint64(100)).ToLegacyDec()).Quo(totalShares.ToLegacyDec())
+		shareRepartition.NetworkPercentageSecurisation = fmt.Sprintf("%f%%", percentage)
+		shareRepartitionMap[consensusAsset.GetDenom()] = shareRepartition
+	}
+
+	return &types.QueryShareRepartitionMapResponse{SharesRepartitionMap: shareRepartitionMap}, nil
 }
 
 // Validator queries validator info for given validator address
@@ -201,6 +266,36 @@ func (k Querier) ValidatorUnbondingDelegations(ctx context.Context, req *types.Q
 		UnbondingResponses: ubds,
 		Pagination:         pageRes,
 	}, nil
+}
+
+func (k Querier) GetDelegations(ctx context.Context, req *types.QueryGetDelegationsRequest) (*types.QueryGetDelegationsResponse, error) {
+	delegations := make([]types.Delegation, 0)
+	totalVotingPower := math.LegacyZeroDec()
+	delegatorAddress, err := sdk.AccAddressFromBech32(req.DelegatorAddr)
+
+	if err != nil {
+		return &types.QueryGetDelegationsResponse{Delegations: delegations}, status.Error(codes.InvalidArgument, "delegator address parsing failed")
+	}
+	// iterate over all delegations from voter, deduct from any delegated-to validators
+	err = k.IterateDelegations(ctx, delegatorAddress, func(index int64, delegation types.DelegationI) (stop bool) {
+
+		votingPower := delegation.GetShares() //.MulInt(val.BondedTokens).Quo(val.DelegatorShares)
+		totalVotingPower = totalVotingPower.Add(votingPower)
+
+		delegationData := types.Delegation{
+			DelegatorAddress:    delegation.GetDelegatorAddr(),
+			ValidatorAddress:    delegation.GetValidatorAddr(),
+			Shares:              delegation.GetShares(),
+			AssetWeights:        delegation.GetAssetWeight(),
+			TotalWeightedAmount: delegation.GetTotalWeightedAmount(),
+		}
+		delegations = append(delegations, delegationData)
+		return false
+	})
+	if err != nil {
+		return &types.QueryGetDelegationsResponse{Delegations: delegations}, err
+	}
+	return &types.QueryGetDelegationsResponse{Delegations: delegations}, nil
 }
 
 // Delegation queries delegate info for given validator delegator pair
@@ -345,6 +440,29 @@ func (k Querier) DelegatorValidator(ctx context.Context, req *types.QueryDelegat
 	return &types.QueryDelegatorValidatorResponse{Validator: validator}, nil
 }
 
+func (k Querier) TotalBoostedDelegation(ctx context.Context, req *types.QueryTotalBoostedDelegationRequest) (*types.QueryTotalBoostedDelegationResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+	if req.ValidatorAddr == "" {
+		return nil, status.Error(codes.InvalidArgument, "validator address cannot be empty")
+	}
+
+	valAddr, err := k.validatorAddressCodec.StringToBytes(req.ValidatorAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	totalBoost, err := k.GetTotalBoostedDelegation(ctx, valAddr)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryTotalBoostedDelegationResponse{
+		TotalBoost: totalBoost.String(),
+	}, nil
+}
+
 // DelegatorUnbondingDelegations queries all unbonding delegations of a given delegator address
 func (k Querier) DelegatorUnbondingDelegations(ctx context.Context, req *types.QueryDelegatorUnbondingDelegationsRequest) (*types.QueryDelegatorUnbondingDelegationsResponse, error) {
 	if req == nil {
@@ -480,10 +598,12 @@ func (k Querier) Pool(ctx context.Context, _ *types.QueryPoolRequest) (*types.Qu
 	}
 	bondedPool := k.GetBondedPool(ctx)
 	notBondedPool := k.GetNotBondedPool(ctx)
+	boostedPool := k.GetBoostedPool(ctx)
 
 	pool := types.NewPool(
 		k.bankKeeper.GetBalance(ctx, notBondedPool.GetAddress(), bondDenom).Amount,
 		k.bankKeeper.GetBalance(ctx, bondedPool.GetAddress(), bondDenom).Amount,
+		k.bankKeeper.GetBalance(ctx, boostedPool.GetAddress(), bondDenom).Amount,
 	)
 
 	return &types.QueryPoolResponse{Pool: pool}, nil
@@ -594,6 +714,8 @@ func delegationToDelegationResponse(ctx context.Context, k *Keeper, del types.De
 		del.DelegatorAddress,
 		del.GetValidatorAddr(),
 		del.Shares,
+		del.AssetWeights,
+		del.TotalWeightedAmount,
 		sdk.NewCoin(bondDenom, val.TokensFromShares(del.Shares).TruncateInt()),
 	), nil
 }
@@ -657,4 +779,272 @@ func redelegationsToRedelegationResponses(ctx context.Context, k *Keeper, redels
 	}
 
 	return resp, nil
+}
+
+// EpochInfo returns current epoch information
+func (k Keeper) EpochInfo(ctx context.Context, req *types.QueryEpochInfoRequest) (*types.QueryEpochInfoResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	// Get epoch configuration and state
+	currentEpoch := k.GetCurrentEpoch(ctx)
+	epochLength := k.GetEpochLength(ctx)
+	lastEpochHeight := k.GetLastEpochHeight(ctx)
+	validatorsPerEpoch := k.GetValidatorsPerEpoch(ctx)
+	epochEnabled := k.IsEpochEnabled(ctx)
+
+	// Get current height
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := uint64(sdkCtx.BlockHeight())
+
+	// Calculate blocks until next epoch
+	var blocksUntilNextEpoch uint64
+	if lastEpochHeight > 0 && epochLength > 0 {
+		nextEpochHeight := lastEpochHeight + epochLength
+		if currentHeight < nextEpochHeight {
+			blocksUntilNextEpoch = nextEpochHeight - currentHeight
+		} else {
+			blocksUntilNextEpoch = 0 // We're at or past the next epoch height
+		}
+	} else {
+		blocksUntilNextEpoch = epochLength // First epoch
+	}
+
+	return &types.QueryEpochInfoResponse{
+		CurrentEpoch:         currentEpoch,
+		EpochLength:          epochLength,
+		LastEpochHeight:      lastEpochHeight,
+		ValidatorsPerEpoch:   validatorsPerEpoch,
+		EpochEnabled:         epochEnabled,
+		CurrentHeight:        currentHeight,
+		BlocksUntilNextEpoch: blocksUntilNextEpoch,
+	}, nil
+}
+
+func (k Keeper) GetEpochValidatorsHandler(ctx context.Context, req *types.QueryEpochValidatorsRequest) (*types.QueryEpochValidatorsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Check if epoch is enabled
+	if !k.IsEpochEnabled(sdkCtx) {
+		return nil, status.Error(codes.FailedPrecondition, "epoch-based validator rotation is not enabled")
+	}
+
+	// Get current epoch for validation
+	currentEpoch := k.GetCurrentEpoch(sdkCtx)
+
+	// If no specific epoch is requested or epoch is 0, use current epoch
+	epochToQuery := currentEpoch
+
+	// Validate requested epoch is not in the future
+	if epochToQuery > currentEpoch {
+		return nil, status.Error(codes.InvalidArgument, "requested epoch is in the future")
+	}
+
+	// Get validators for the requested epoch
+	var validators []types.Validator
+	if epochToQuery == currentEpoch {
+		// For current epoch, use the active validators function
+		validators = k.GetActiveValidatorsForCurrentEpoch(sdkCtx)
+	} else {
+		// For historical epochs, use the epoch history function
+		validators = k.GetEpochValidators(sdkCtx, epochToQuery)
+	}
+
+	// If no validators found, return empty list
+	if len(validators) == 0 {
+		return &types.QueryEpochValidatorsResponse{
+			Validators: []types.Validator{},
+			Pagination: &query.PageResponse{
+				Total: 0,
+			},
+		}, nil
+	}
+
+	// Handle pagination
+	start, end := uint64(0), uint64(len(validators))
+	if req.Pagination != nil {
+		if req.Pagination.Offset > 0 {
+			start = req.Pagination.Offset
+		}
+
+		if req.Pagination.Limit > 0 {
+			end = start + req.Pagination.Limit
+			if end > uint64(len(validators)) {
+				end = uint64(len(validators))
+			}
+		}
+	}
+
+	// Apply pagination
+	var paginatedResults []types.Validator
+	if start < uint64(len(validators)) {
+		paginatedResults = validators[start:end]
+	} else {
+		paginatedResults = []types.Validator{}
+	}
+
+	// Prepare pagination response
+	var nextKey []byte
+	if end < uint64(len(validators)) {
+		// Only set nextKey if there are more results
+		nextKeyUint64 := end
+		nextKey = sdk.Uint64ToBigEndian(nextKeyUint64)
+	}
+
+	pageRes := &query.PageResponse{
+		NextKey: nextKey,
+		Total:   uint64(len(validators)),
+	}
+
+	return &types.QueryEpochValidatorsResponse{
+		Validators: paginatedResults,
+		Pagination: pageRes,
+	}, nil
+}
+
+// GetPreviousEpochValidators returns the list of validators from the previous epoch
+func (k Keeper) GetPreviousEpochValidatorsHandler(ctx context.Context, req *types.QueryPreviousEpochValidatorsRequest) (*types.QueryPreviousEpochValidatorsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Check if epoch is enabled
+	if !k.IsEpochEnabled(sdkCtx) {
+		return nil, status.Error(codes.FailedPrecondition, "epoch-based validator rotation is not enabled")
+	}
+
+	// Get current epoch for validation
+	currentEpoch := k.GetCurrentEpoch(sdkCtx)
+
+	// Check if we have a previous epoch (current epoch > 1)
+	if currentEpoch <= 1 {
+		return nil, status.Error(codes.NotFound, "no previous epoch exists yet")
+	}
+
+	// Get the previous epoch validators directly
+	previousValidators := k.GetAllPreviouslyActiveValidators(sdkCtx)
+
+	// If no validators found, return empty list
+	if len(previousValidators) == 0 {
+		return &types.QueryPreviousEpochValidatorsResponse{
+			Validators: []types.Validator{},
+			Pagination: &query.PageResponse{
+				Total: 0,
+			},
+		}, nil
+	}
+
+	// Handle pagination
+	start, end := uint64(0), uint64(len(previousValidators))
+	if req.Pagination != nil {
+		if req.Pagination.Offset > 0 {
+			start = req.Pagination.Offset
+		}
+
+		if req.Pagination.Limit > 0 {
+			end = start + req.Pagination.Limit
+			if end > uint64(len(previousValidators)) {
+				end = uint64(len(previousValidators))
+			}
+		}
+	}
+
+	// Apply pagination
+	var paginatedResults []types.Validator
+	if start < uint64(len(previousValidators)) {
+		paginatedResults = previousValidators[start:end]
+	} else {
+		paginatedResults = []types.Validator{}
+	}
+
+	// Prepare pagination response
+	var nextKey []byte
+	if end < uint64(len(previousValidators)) {
+		// Only set nextKey if there are more results
+		nextKeyUint64 := end
+		nextKey = sdk.Uint64ToBigEndian(nextKeyUint64)
+	}
+
+	pageRes := &query.PageResponse{
+		NextKey: nextKey,
+		Total:   uint64(len(previousValidators)),
+	}
+
+	return &types.QueryPreviousEpochValidatorsResponse{
+		Validators: paginatedResults,
+		Pagination: pageRes,
+	}, nil
+}
+
+// GetEpochLength returns the configured epoch length in blocks
+func (k Keeper) GetEpochLengthHandler(ctx context.Context, req *types.QueryEpochLengthRequest) (*types.QueryEpochLengthResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	epochLength := k.GetEpochLength(sdkCtx)
+
+	return &types.QueryEpochLengthResponse{
+		EpochLength: epochLength,
+	}, nil
+}
+
+// GetValidatorsPerEpoch returns the number of validators selected per epoch
+func (k Keeper) GetValidatorsPerEpochHandler(ctx context.Context, req *types.QueryValidatorsPerEpochRequest) (*types.QueryValidatorsPerEpochResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	validatorsPerEpoch := k.GetValidatorsPerEpoch(sdkCtx)
+
+	return &types.QueryValidatorsPerEpochResponse{
+		ValidatorsPerEpoch: validatorsPerEpoch,
+	}, nil
+}
+
+// IsEpochEnabled checks if epoch-based validator rotation is enabled
+func (k Keeper) GetIsEpochEnabledHandler(ctx context.Context, req *types.QueryIsEpochEnabledRequest) (*types.QueryIsEpochEnabledResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	enabled := k.IsEpochEnabled(sdkCtx)
+
+	return &types.QueryIsEpochEnabledResponse{
+		EpochEnabled: enabled,
+	}, nil
+}
+
+// GetCurrentEpochHandler returns current epoch information
+func (k Keeper) GetCurrentEpochHandler(ctx context.Context, req *types.QueryCurrentEpochRequest) (*types.QueryCurrentEpochResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// Get all required information from the keeper
+	currentEpoch := k.GetCurrentEpoch(sdkCtx)
+	epochLength := k.GetEpochLength(sdkCtx)
+	lastEpochHeight := k.GetLastEpochHeight(sdkCtx)
+	validatorsPerEpoch := k.GetValidatorsPerEpoch(sdkCtx)
+	epochEnabled := k.IsEpochEnabled(sdkCtx)
+
+	return &types.QueryCurrentEpochResponse{
+		CurrentEpoch:       currentEpoch,
+		EpochLength:        epochLength,
+		LastEpochHeight:    lastEpochHeight,
+		ValidatorsPerEpoch: validatorsPerEpoch,
+		EpochEnabled:       epochEnabled,
+	}, nil
 }

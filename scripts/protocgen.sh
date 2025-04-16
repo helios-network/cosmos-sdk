@@ -26,15 +26,40 @@ done
 cd ..
 
 # generate tests proto code
-(cd testutil/testdata; buf generate)
-(cd baseapp/testutil; buf generate)
-(cd tests/integration/tx/internal; make codegen)
+# (cd testutil/testdata; buf generate)
+# (cd baseapp/testutil; buf generate)
+# (cd tests/integration/tx/internal; make codegen)
 
-# move proto files to the right places
+# # move proto files to the right places
 cp -r github.com/cosmos/cosmos-sdk/* ./
 cp -r cosmossdk.io/** ./
 rm -rf github.com cosmossdk.io
 
-go mod tidy
 
-./scripts/protocgen-pulsar.sh
+echo "Replacing strings in all files within $DIRECTORY_TO_OVERLOAD"
+
+# Parcourir tous les fichiers du répertoire
+for DIRECTORY_TO_OVERLOAD in "x" "client" "crypto" "store" "types" "server"; do
+  # Vérifier que le répertoire existe
+  if [[ ! -d "$DIRECTORY_TO_OVERLOAD" ]]; then
+    echo "Error: Directory $DIRECTORY_TO_OVERLOAD does not exist."
+    exit 1
+  fi
+  for file in $(find "$DIRECTORY_TO_OVERLOAD" -type f -name "*.pb.go"); do
+    echo "Processing file: $file"
+    
+    # Remplacer les chaînes dans chaque fichier
+    awk '{
+      gsub("github.com/gogo/protobuf/grpc", "github.com/cosmos/gogoproto/grpc");
+      gsub("github.com/gogo/protobuf/proto", "github.com/cosmos/gogoproto/proto");
+      gsub("github.com/gogo/protobuf/types", "github.com/cosmos/gogoproto/types");
+      gsub("github_com_gogo_protobuf_types", "github_com_cosmos_gogoproto_types");
+      print;
+    }' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+  done
+  echo "Replacement completed for all files in $DIRECTORY_TO_OVERLOAD."
+done
+
+# go mod tidy
+
+# ./scripts/protocgen-pulsar.sh

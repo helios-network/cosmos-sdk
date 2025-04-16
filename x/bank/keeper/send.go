@@ -234,6 +234,7 @@ func (k BaseSendKeeper) sendCoin(ctx context.Context, fromAddr, toAddr sdk.AccAd
 	// such as delegated fee messages.
 	accExists := k.ak.HasAccount(ctx, toAddr)
 	if !accExists {
+
 		defer telemetry.IncrCounter(1, "new", "account")
 		k.ak.SetAccount(ctx, k.ak.NewAccountWithAddress(ctx, toAddr))
 	}
@@ -302,6 +303,8 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 		if err := k.setBalance(ctx, addr, newBalance); err != nil {
 			return err
 		}
+
+		k.updateHoldersCount(ctx, balance, newBalance)
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -310,6 +313,85 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 	)
 
 	return nil
+}
+
+func (k BaseSendKeeper) updateHoldersCount(ctx context.Context, balance sdk.Coin, newBalance sdk.Coin) {
+	if balance.IsZero() && !newBalance.IsZero() { // new holder
+		oldCount, _ := k.HoldersCount.Get(ctx, balance.Denom)
+		newCount := oldCount + 1
+
+		// Update the counter
+		k.HoldersCount.Set(ctx, balance.Denom, newCount)
+
+		// Delete the old entry in the index if it exists
+		if oldCount > 0 {
+			k.HoldersSortedIndex.Remove(ctx, collections.Join(^uint64(oldCount), balance.Denom))
+		}
+
+		// Add the new entry (use ^count to sort by descending order)
+		k.HoldersSortedIndex.Set(ctx, collections.Join(^uint64(newCount), balance.Denom), true)
+
+		// Update the chain holders index
+		metadata, err := k.BaseViewKeeper.DenomMetadata.Get(ctx, balance.Denom)
+		if err == nil && len(metadata.ChainsMetadatas) > 0 {
+			for _, chainMetadata := range metadata.ChainsMetadatas {
+				// Delete the old entry
+				if oldCount > 0 {
+					k.ChainHoldersIndex.Remove(ctx, collections.Join3(
+						chainMetadata.ChainId,
+						^uint64(oldCount),
+						balance.Denom,
+					))
+				}
+
+				// Add the new entry
+				k.ChainHoldersIndex.Set(ctx, collections.Join3(
+					chainMetadata.ChainId,
+					^uint64(newCount),
+					balance.Denom,
+				), true)
+			}
+		}
+	} else if !balance.IsZero() && newBalance.IsZero() { // last holder
+		oldCount, _ := k.HoldersCount.Get(ctx, balance.Denom)
+		newCount := oldCount - 1
+
+		// Update the counter
+		k.HoldersCount.Set(ctx, balance.Denom, newCount)
+		// Delete the old entry
+		k.HoldersSortedIndex.Remove(ctx, collections.Join(^uint64(oldCount), balance.Denom))
+
+		// Add the new entry if > 0
+		if newCount > 0 {
+			k.HoldersSortedIndex.Set(ctx, collections.Join(^uint64(newCount), balance.Denom), true)
+		}
+
+		// Update the chain holders index
+		metadata, err := k.BaseViewKeeper.DenomMetadata.Get(ctx, balance.Denom)
+		if err == nil && len(metadata.ChainsMetadatas) > 0 {
+			for _, chainMetadata := range metadata.ChainsMetadatas {
+				// Delete the old entry
+				k.ChainHoldersIndex.Remove(ctx, collections.Join3(
+					chainMetadata.ChainId,
+					^uint64(oldCount),
+					balance.Denom,
+				))
+
+				// Add the new entry if > 0
+				if newCount > 0 {
+					k.ChainHoldersIndex.Set(ctx, collections.Join3(
+						chainMetadata.ChainId,
+						^uint64(newCount),
+						balance.Denom,
+					), true)
+				}
+			}
+		}
+	}
+}
+
+func (k BaseSendKeeper) SafeTransferTreasury(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error {
+	return k.addCoins(ctx, addr, amt)
 }
 
 // addCoins increase the addr balance by the given amt. Fails if the provided
@@ -327,6 +409,8 @@ func (k BaseSendKeeper) addCoins(ctx context.Context, addr sdk.AccAddress, amt s
 		if err != nil {
 			return err
 		}
+
+		k.updateHoldersCount(ctx, balance, newBalance)
 	}
 
 	// emit coin received event
@@ -357,7 +441,6 @@ func (k BaseSendKeeper) setBalance(ctx context.Context, addr sdk.AccAddress, bal
 
 	// set transient balance which will be emitted in the Endblocker
 	k.setTransientBalance(sdk.UnwrapSDKContext(ctx), addr, balance)
-
 	return k.Balances.Set(ctx, collections.Join(addr, balance.Denom), balance.Amount)
 }
 

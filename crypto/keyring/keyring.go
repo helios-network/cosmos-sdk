@@ -36,12 +36,14 @@ const (
 	BackendPass    = "pass"
 	BackendTest    = "test"
 	BackendMemory  = "memory"
+	BackendLocal   = "local"
 )
 
 const (
-	keyringFileDirName = "keyring-file"
-	keyringTestDirName = "keyring-test"
-	passKeyringPrefix  = "keyring-%s"
+	keyringFileDirName  = "keyring-file"
+	keyringTestDirName  = "keyring-test"
+	keyringLocalDirName = "keyring-local"
+	passKeyringPrefix   = "keyring-%s"
 
 	// temporary pass phrase for exporting a key during a key rename
 	passPhrase = "temp"
@@ -82,6 +84,8 @@ type Keyring interface {
 	//
 	// A passphrase set to the empty string will set the passphrase to the DefaultBIP39Passphrase value.
 	NewMnemonic(uid string, language Language, hdPath, bip39Passphrase string, algo SignatureAlgo) (*Record, string, error)
+
+	NewAccountFromPrivateKey(name string, privKeyBytes []byte, algo SignatureAlgo) (*Record, error)
 
 	// NewAccount converts a mnemonic to a private key and BIP-39 HD Path and persists it.
 	// It fails if there is an existing key Info with the same address.
@@ -187,6 +191,8 @@ func New(
 	switch backend {
 	case BackendMemory:
 		return NewInMemory(cdc, opts...), err
+	case BackendLocal:
+		db, err = keyring.Open(newLocalBackendKeyringConfig(appName, rootDir))
 	case BackendTest:
 		db, err = keyring.Open(newTestBackendKeyringConfig(appName, rootDir))
 	case BackendFile:
@@ -600,6 +606,21 @@ func (ks keystore) NewAccount(name, mnemonic, bip39Passphrase, hdPath string, al
 	return ks.writeLocalKey(name, privKey)
 }
 
+func (ks keystore) NewAccountFromPrivateKey(name string, privKeyBytes []byte, algo SignatureAlgo) (*Record, error) {
+	if !ks.isSupportedSigningAlgo(algo) {
+		return nil, ErrUnsupportedSigningAlgo
+	}
+
+	privKey := algo.Generate()(privKeyBytes)
+
+	address := sdk.AccAddress(privKey.PubKey().Address())
+	if _, err := ks.KeyByAddress(address); err == nil {
+		return nil, ErrDuplicatedAddress
+	}
+
+	return ks.writeLocalKey(name, privKey)
+}
+
 func (ks keystore) isSupportedSigningAlgo(algo SignatureAlgo) bool {
 	return ks.options.SupportedAlgos.Contains(algo)
 }
@@ -680,6 +701,17 @@ func newTestBackendKeyringConfig(appName, dir string) keyring.Config {
 		AllowedBackends: []keyring.BackendType{keyring.FileBackend},
 		ServiceName:     appName,
 		FileDir:         filepath.Join(dir, keyringTestDirName),
+		FilePasswordFunc: func(_ string) (string, error) {
+			return "test", nil
+		},
+	}
+}
+
+func newLocalBackendKeyringConfig(appName, dir string) keyring.Config {
+	return keyring.Config{
+		AllowedBackends: []keyring.BackendType{keyring.FileBackend},
+		ServiceName:     appName,
+		FileDir:         filepath.Join(dir, keyringLocalDirName),
 		FilePasswordFunc: func(_ string) (string, error) {
 			return "test", nil
 		},

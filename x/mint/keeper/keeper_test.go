@@ -73,11 +73,11 @@ func (s *IntegrationTestSuite) SetupTest() {
 }
 
 func (s *IntegrationTestSuite) TestAliasFunctions() {
-	stakingTokenSupply := math.NewIntFromUint64(100000000000)
-	s.stakingKeeper.EXPECT().StakingTokenSupply(s.ctx).Return(stakingTokenSupply, nil)
-	tokenSupply, err := s.mintKeeper.StakingTokenSupply(s.ctx)
+	TotalHeliosSupply := math.NewIntFromUint64(100000000000)
+	s.stakingKeeper.EXPECT().TotalHeliosSupply(s.ctx).Return(TotalHeliosSupply, nil)
+	tokenSupply, err := s.mintKeeper.TotalHeliosSupply(s.ctx)
 	s.Require().NoError(err)
-	s.Require().Equal(tokenSupply, stakingTokenSupply)
+	s.Require().Equal(tokenSupply, TotalHeliosSupply)
 
 	bondedRatio := math.LegacyNewDecWithPrec(15, 2)
 	s.stakingKeeper.EXPECT().BondedRatio(s.ctx).Return(bondedRatio, nil)

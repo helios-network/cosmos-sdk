@@ -38,8 +38,11 @@ message GenesisState {
   // redelegations defines the redelegations active at genesis.
   repeated Redelegation redelegations = 7 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 
+  // delegation_boost defines the delegation_boost active at genesis.
+  repeated DelegationBoost delegation_boosts = 8 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
   // exported defines a bool to identify whether the chain dealing with exported or initialized genesis.
-  bool exported = 8;
+  bool exported = 9;
 }
 
 // LastValidatorPower required for validator set update logic.

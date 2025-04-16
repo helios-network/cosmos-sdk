@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,16 +26,18 @@ import (
 )
 
 const (
-	flagInteractive  = "interactive"
-	flagRecover      = "recover"
-	flagNoBackup     = "no-backup"
-	flagCoinType     = "coin-type"
-	flagAccount      = "account"
-	flagIndex        = "index"
-	flagMultisig     = "multisig"
-	flagNoSort       = "nosort"
-	flagHDPath       = "hd-path"
-	flagPubKeyBase64 = "pubkey-base64"
+	flagInteractive    = "interactive"
+	flagRecover        = "recover"
+	flagNoBackup       = "no-backup"
+	flagCoinType       = "coin-type"
+	flagAccount        = "account"
+	flagIndex          = "index"
+	flagMultisig       = "multisig"
+	flagNoSort         = "nosort"
+	flagHDPath         = "hd-path"
+	flagPubKeyBase64   = "pubkey-base64"
+	flagFromPrivateKey = "from-private-key"
+	flagFromMnemonic   = "from-mnemonic"
 
 	// DefaultKeyPass contains the default key password for genesis transactions
 	DefaultKeyPass = "12345678"
@@ -83,6 +86,8 @@ Example:
 	f.Uint32(flagAccount, 0, "Account number for HD derivation (less than equal 2147483647)")
 	f.Uint32(flagIndex, 0, "Address index number for HD derivation (less than equal 2147483647)")
 	f.String(flags.FlagKeyType, string(hd.Secp256k1Type), "Key signing algorithm to generate keys for")
+	f.String(flagFromPrivateKey, "", "Add a key directly from a private key (hex-encoded)")
+	f.String(flagFromMnemonic, "", "Add a key directly from a mnemomic phrase")
 
 	// support old flags name for backwards compatibility
 	f.SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
@@ -108,10 +113,16 @@ func runAddCmdPrepare(cmd *cobra.Command, args []string) error {
 
 /*
 input
+
   - bip39 mnemonic
+
   - bip39 passphrase
+
   - bip44 path
+
   - local encryption password
+
+    Warning!!! This function is overrided in Helios-Core Project in helios-chain/client/keys/add.go
 
 output
   - armor encrypted private key (saved to file)
@@ -194,9 +205,37 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 
 	pubKey, _ := cmd.Flags().GetString(FlagPublicKey)
 	pubKeyBase64, _ := cmd.Flags().GetString(flagPubKeyBase64)
+	fromPrivateKey, _ := cmd.Flags().GetString(flagFromPrivateKey)
+	recoverFlag, _ := cmd.Flags().GetBool(flagRecover)
+	fromMnemonic, _ := cmd.Flags().GetString(flagFromMnemonic)
+
 	if pubKey != "" && pubKeyBase64 != "" {
 		return fmt.Errorf(`flags %s and %s cannot be used simultaneously`, FlagPublicKey, flagPubKeyBase64)
 	}
+	if fromPrivateKey != "" && (recoverFlag || pubKey != "") {
+		return fmt.Errorf("--from-private-key cannot be used with --recover or --pubkey")
+	}
+
+	cmd.Println("privateKey:")
+	cmd.Println(string(fromPrivateKey))
+
+	if fromPrivateKey != "" {
+		// Décodage de la clé privée hexadécimale
+		pkBytes, err := hex.DecodeString(fromPrivateKey)
+		if err != nil {
+			return fmt.Errorf("invalid private key format: %v", err)
+		}
+
+		// Génération de l'enregistrement dans le keyring
+		k, err := kb.NewAccountFromPrivateKey(name, pkBytes, algo)
+		if err != nil {
+			return fmt.Errorf("could not save key: %v", err)
+		}
+
+		// Impression des informations sur la clé
+		return printCreate(cmd, k, false, "", outputFormat)
+	}
+
 	if pubKey != "" {
 		var pk cryptotypes.PubKey
 		if err = ctx.Codec.UnmarshalInterfaceJSON([]byte(pubKey), &pk); err != nil {
@@ -249,6 +288,19 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 	hdPath, _ := cmd.Flags().GetString(flagHDPath)
 	useLedger, _ := cmd.Flags().GetBool(flags.FlagUseLedger)
 
+	if fromMnemonic != "" { // from mnemonic flag
+		if !bip39.IsMnemonicValid(fromMnemonic) {
+			return errors.New("invalid mnemonic")
+		}
+
+		k, err := kb.NewAccount(name, fromMnemonic, "", hdPath, algo)
+		if err != nil {
+			return err
+		}
+
+		return printCreate(cmd, k, showMnemonic, fromMnemonic, outputFormat)
+	}
+
 	if len(hdPath) == 0 {
 		hdPath = hd.CreateHDPath(coinType, account, index).String()
 	} else if useLedger {
@@ -269,7 +321,6 @@ func runAddCmd(ctx client.Context, cmd *cobra.Command, args []string, inBuf *buf
 	// Get bip39 mnemonic
 	var mnemonic, bip39Passphrase string
 
-	recoverFlag, _ := cmd.Flags().GetBool(flagRecover)
 	if recoverFlag {
 		mnemonic, err = input.GetString("Enter your bip39 mnemonic", inBuf)
 		if err != nil {

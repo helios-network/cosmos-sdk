@@ -6,6 +6,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // Use protobuf interface marshaler rather then generic JSON
@@ -13,11 +14,16 @@ import (
 // KeyOutput defines a structure wrapping around an Info object used for output
 // functionality.
 type KeyOutput struct {
-	Name     string `json:"name" yaml:"name"`
-	Type     string `json:"type" yaml:"type"`
-	Address  string `json:"address" yaml:"address"`
-	PubKey   string `json:"pubkey" yaml:"pubkey"`
-	Mnemonic string `json:"mnemonic,omitempty" yaml:"mnemonic"`
+	Name            string `json:"name" yaml:"name"`
+	Type            string `json:"type" yaml:"type"`
+	Address         string `json:"address" yaml:"address"`
+	AddressEthereum string `json:"addressEthereum" yaml:"addressEthereum"`
+	PubKey          string `json:"pubkey" yaml:"pubkey"`
+	Mnemonic        string `json:"mnemonic,omitempty" yaml:"mnemonic"`
+}
+
+func CosmosToEthAddr(accAddr sdk.AccAddress) common.Address {
+	return common.BytesToAddress(accAddr.Bytes())
 }
 
 // NewKeyOutput creates a default KeyOutput instance without Mnemonic, Threshold and PubKeys
@@ -30,11 +36,13 @@ func NewKeyOutput(name string, keyType keyring.KeyType, a sdk.Address, pk crypto
 	if err != nil {
 		return KeyOutput{}, err
 	}
+
 	return KeyOutput{
-		Name:    name,
-		Type:    keyType.String(),
-		Address: a.String(),
-		PubKey:  string(bz),
+		Name:            name,
+		Type:            keyType.String(),
+		Address:         a.String(),
+		AddressEthereum: CosmosToEthAddr(a.Bytes()).String(),
+		PubKey:          string(bz),
 	}, nil
 }
 

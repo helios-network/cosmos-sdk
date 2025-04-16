@@ -1,13 +1,14 @@
 syntax = "proto3";
 package cosmos.staking.v1beta1;
 
+import "amino/amino.proto";
 import "cosmos/base/query/v1beta1/pagination.proto";
-import "gogoproto/gogo.proto";
-import "google/api/annotations.proto";
+import "cosmos/query/v1/query.proto";
+import "cosmos/staking/v1beta1/shares.proto";
 import "cosmos/staking/v1beta1/staking.proto";
 import "cosmos_proto/cosmos.proto";
-import "cosmos/query/v1/query.proto";
-import "amino/amino.proto";
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
 
 option go_package = "github.com/cosmos/cosmos-sdk/x/staking/types";
 
@@ -46,6 +47,13 @@ service Query {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/"
                                                  "{validator_addr}/unbonding_delegations";
+  }
+
+  // Delegation queries delegate info for given validator delegator pair.
+  rpc GetDelegations(QueryGetDelegationsRequest) returns (QueryGetDelegationsResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/delegations/"
+                                                 "{delegator_addr}";
   }
 
   // Delegation queries delegate info for given validator delegator pair.
@@ -127,6 +135,60 @@ service Query {
   rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/params";
+  }
+
+  rpc ShareRepartitionMap(QueryShareRepartitionMapRequest) returns (QueryShareRepartitionMapResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/share_repartition_map";
+  }
+
+  // EpochInfo returns the current epoch information (comprehensive endpoint)
+  rpc EpochInfo(QueryEpochInfoRequest) returns (QueryEpochInfoResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/epoch_info";
+  }
+
+  // GetCurrentEpoch returns the current epoch number
+  rpc GetCurrentEpochHandler(QueryCurrentEpochRequest) returns (QueryCurrentEpochResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/current_epoch";
+  }
+
+  // GetEpochValidators returns the validators active in the current epoch
+  rpc GetEpochValidatorsHandler(QueryEpochValidatorsRequest) returns (QueryEpochValidatorsResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/epoch_validators";
+  }
+
+  // GetPreviousEpochValidators returns validators that were active in previous epochs
+  rpc GetPreviousEpochValidatorsHandler(QueryPreviousEpochValidatorsRequest)
+      returns (QueryPreviousEpochValidatorsResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/previous_epoch_validators";
+  }
+
+  // GetEpochLength returns the configured epoch length (number of blocks per epoch)
+  rpc GetEpochLengthHandler(QueryEpochLengthRequest) returns (QueryEpochLengthResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/epoch_length";
+  }
+
+  // GetValidatorsPerEpoch returns the number of validators selected per epoch
+  rpc GetValidatorsPerEpochHandler(QueryValidatorsPerEpochRequest) returns (QueryValidatorsPerEpochResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/validators_per_epoch";
+  }
+
+  // IsEpochEnabled checks if epoch-based validator rotation is enabled
+  rpc GetIsEpochEnabledHandler(QueryIsEpochEnabledRequest) returns (QueryIsEpochEnabledResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/epoch_enabled";
+  }
+
+  // TotalBoostedDelegation queries the total boosted delegation for a given validator.
+  rpc TotalBoostedDelegation(QueryTotalBoostedDelegationRequest) returns (QueryTotalBoostedDelegationResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/{validator_addr}/total_boost";
   }
 }
 
@@ -253,8 +315,8 @@ message QueryDelegatorDelegationsRequest {
 // QueryDelegatorDelegationsResponse is response type for the
 // Query/DelegatorDelegations RPC method.
 message QueryDelegatorDelegationsResponse {
-  // delegation_responses defines all the delegations' info of a delegator.
-  repeated DelegationResponse delegation_responses = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  repeated DelegationResponse delegation_responses = 1
+      [(gogoproto.nullable) = false, (amino.dont_omitempty) = true, (gogoproto.castrepeated) = "DelegationResponses"];
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
@@ -384,4 +446,123 @@ message QueryParamsRequest {}
 message QueryParamsResponse {
   // params holds all the parameters of this module.
   Params params = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+// QueryGetDelegationsRequest is the request type for the Query/GetDelegations RPC method
+message QueryGetDelegationsRequest {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // delegator_addr defines the delegator address to query for
+  string delegator_addr = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// QueryGetDelegationsResponse is the response type for the Query/GetDelegations RPC method
+message QueryGetDelegationsResponse {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // delegations defines all the delegations from a delegator
+  repeated cosmos.staking.v1beta1.Delegation delegations = 1
+      [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+message QueryShareRepartitionMapRequest {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // pagination defines an optional pagination for the request.
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+message QueryShareRepartitionMapResponse {
+  // sharesRepartitionMap defines all the repartition shares info of the network.
+  map<string, SharesRepartition> shares_repartition_map = 1
+      [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+// QueryEpochInfoRequest is the request type for the Query/EpochInfo RPC method
+message QueryEpochInfoRequest {}
+
+// QueryEpochInfoResponse is the response type for the Query/EpochInfo RPC method
+message QueryEpochInfoResponse {
+  uint64 current_epoch           = 1;
+  uint64 epoch_length            = 2;
+  uint64 last_epoch_height       = 3;
+  int64  validators_per_epoch    = 4;
+  bool   epoch_enabled           = 5;
+  uint64 current_height          = 6;
+  uint64 blocks_until_next_epoch = 7;
+}
+
+// QueryCurrentEpochRequest is the request type for the Query/CurrentEpoch RPC method
+message QueryCurrentEpochRequest {}
+
+// QueryCurrentEpochResponse is the response type for the Query/CurrentEpoch RPC method
+message QueryCurrentEpochResponse {
+  uint64 current_epoch        = 1;
+  uint64 epoch_length         = 2;
+  uint64 last_epoch_height    = 3;
+  int64  validators_per_epoch = 4;
+  bool   epoch_enabled        = 5;
+}
+
+// QueryEpochValidatorsRequest is the request type for the Query/EpochValidators RPC method
+message QueryEpochValidatorsRequest {
+  // pagination defines an optional pagination for the request
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryEpochValidatorsResponse is the response type for the Query/EpochValidators RPC method
+message QueryEpochValidatorsResponse {
+  repeated Validator                     validators = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryPreviousEpochValidatorsRequest is the request type for the Query/PreviousEpochValidators RPC method
+message QueryPreviousEpochValidatorsRequest {
+  // pagination defines an optional pagination for the request
+  cosmos.base.query.v1beta1.PageRequest pagination = 1;
+}
+
+// QueryPreviousEpochValidatorsResponse is the response type for the Query/PreviousEpochValidators RPC method
+message QueryPreviousEpochValidatorsResponse {
+  repeated Validator                     validators = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryEpochLengthRequest is the request type for the Query/EpochLength RPC method
+message QueryEpochLengthRequest {}
+
+// QueryEpochLengthResponse is the response type for the Query/EpochLength RPC method
+message QueryEpochLengthResponse {
+  uint64 epoch_length = 1;
+}
+
+// QueryValidatorsPerEpochRequest is the request type for the Query/ValidatorsPerEpoch RPC method
+message QueryValidatorsPerEpochRequest {}
+
+// QueryValidatorsPerEpochResponse is the response type for the Query/ValidatorsPerEpoch RPC method
+message QueryValidatorsPerEpochResponse {
+  int64 validators_per_epoch = 1;
+}
+
+// QueryIsEpochEnabledRequest is the request type for the Query/IsEpochEnabled RPC method
+message QueryIsEpochEnabledRequest {}
+
+// QueryIsEpochEnabledResponse is the response type for the Query/IsEpochEnabled RPC method
+message QueryIsEpochEnabledResponse {
+  bool epoch_enabled = 1;
+}
+
+// QueryTotalBoostedDelegationRequest is the request type for the Query/TotalBoostedDelegation RPC method.
+message QueryTotalBoostedDelegationRequest {
+  // validator_addr defines the validator address to query.
+  string validator_addr = 1 [(cosmos_proto.scalar) = "cosmos.ValidatorAddressString"];
+}
+
+// QueryTotalBoostedDelegationResponse is the response type for the Query/TotalBoostedDelegation RPC method.
+message QueryTotalBoostedDelegationResponse {
+  // total_boost defines the total boosted delegation amount for the validator.
+  string total_boost = 1;
 }

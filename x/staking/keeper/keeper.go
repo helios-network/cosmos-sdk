@@ -28,6 +28,7 @@ type Keeper struct {
 	cdc                   codec.BinaryCodec
 	authKeeper            types.AccountKeeper
 	bankKeeper            types.BankKeeper
+	erc20Keeper           types.Erc20Keeper
 	hooks                 types.StakingHooks
 	authority             string
 	validatorAddressCodec addresscodec.Codec
@@ -40,6 +41,7 @@ func NewKeeper(
 	storeService storetypes.KVStoreService,
 	ak types.AccountKeeper,
 	bk types.BankKeeper,
+	ec types.Erc20Keeper,
 	authority string,
 	validatorAddressCodec addresscodec.Codec,
 	consensusAddressCodec addresscodec.Codec,
@@ -67,6 +69,7 @@ func NewKeeper(
 		cdc:                   cdc,
 		authKeeper:            ak,
 		bankKeeper:            bk,
+		erc20Keeper:           ec,
 		hooks:                 nil,
 		authority:             authority,
 		validatorAddressCodec: validatorAddressCodec,
@@ -171,4 +174,8 @@ func (k Keeper) GetValidatorUpdates(ctx context.Context) ([]abci.ValidatorUpdate
 	}
 
 	return valUpdates.Updates, nil
+}
+
+func (k *Keeper) SetErc20Keeper(erc20Keeper types.Erc20Keeper) {
+	k.erc20Keeper = erc20Keeper
 }

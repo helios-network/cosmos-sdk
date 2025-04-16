@@ -4,6 +4,7 @@ import (
 	context "context"
 
 	"cosmossdk.io/core/address"
+	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -53,6 +54,11 @@ type StakingKeeper interface {
 	GetAllSDKDelegations(ctx context.Context) ([]stakingtypes.Delegation, error)
 	GetAllValidators(ctx context.Context) ([]stakingtypes.Validator, error)
 	GetAllDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress) ([]stakingtypes.Delegation, error)
+	GetValidatorDelegations(ctx context.Context, validatorAddr sdk.ValAddress) ([]stakingtypes.Delegation, error)
+	GetValidatorDelegationsBoost(ctx context.Context, validatorAddr sdk.ValAddress) ([]stakingtypes.DelegationBoost, error)
+	GetParams(ctx context.Context) (stakingtypes.Params, error)
+	TotalBondedTokens(context.Context) (math.Int, error)
+	GetTotalBoostedDelegation(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error)
 }
 
 // StakingHooks event hooks for staking validator object (noalias)

@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"cosmossdk.io/collections"
@@ -14,6 +15,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
+	"github.com/cosmos/cosmos-sdk/types/query"
 	"github.com/cosmos/cosmos-sdk/x/bank/types"
 )
 
@@ -62,28 +64,36 @@ type BaseViewKeeper struct {
 	ak            types.AccountKeeper
 	logger        log.Logger
 
-	Schema        collections.Schema
-	Supply        collections.Map[string, math.Int]
-	DenomMetadata collections.Map[string, types.Metadata]
-	SendEnabled   collections.Map[string, bool]
-	Balances      *collections.IndexedMap[collections.Pair[sdk.AccAddress, string], math.Int, BalancesIndexes]
-	Params        collections.Item[types.Params]
+	Schema             collections.Schema
+	Supply             collections.Map[string, math.Int]
+	HoldersCount       collections.Map[string, uint64]
+	HoldersSortedIndex collections.Map[collections.Pair[uint64, string], bool]
+	OriginChainIndex   collections.Map[collections.Pair[uint64, string], string]
+	ChainHoldersIndex  collections.Map[collections.Triple[uint64, uint64, string], bool]
+	DenomMetadata      collections.Map[string, types.Metadata]
+	SendEnabled        collections.Map[string, bool]
+	Balances           *collections.IndexedMap[collections.Pair[sdk.AccAddress, string], math.Int, BalancesIndexes]
+	Params             collections.Item[types.Params]
 }
 
 // NewBaseViewKeeper returns a new BaseViewKeeper.
 func NewBaseViewKeeper(cdc codec.BinaryCodec, storeService store.KVStoreService, tStoreService store.TransientStoreService, ak types.AccountKeeper, logger log.Logger) BaseViewKeeper {
 	sb := collections.NewSchemaBuilder(storeService)
 	k := BaseViewKeeper{
-		cdc:           cdc,
-		storeService:  storeService,
-		tStoreService: tStoreService,
-		ak:            ak,
-		logger:        logger,
-		Supply:        collections.NewMap(sb, types.SupplyKey, "supply", collections.StringKey, sdk.IntValue),
-		DenomMetadata: collections.NewMap(sb, types.DenomMetadataPrefix, "denom_metadata", collections.StringKey, codec.CollValue[types.Metadata](cdc)),
-		SendEnabled:   collections.NewMap(sb, types.SendEnabledPrefix, "send_enabled", collections.StringKey, codec.BoolValue), // NOTE: we use a bool value which uses protobuf to retain state backwards compat
-		Balances:      collections.NewIndexedMap(sb, types.BalancesPrefix, "balances", collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey), types.BalanceValueCodec, newBalancesIndexes(sb)),
-		Params:        collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
+		cdc:                cdc,
+		storeService:       storeService,
+		tStoreService:      tStoreService,
+		ak:                 ak,
+		logger:             logger,
+		Supply:             collections.NewMap(sb, types.SupplyKey, "supply", collections.StringKey, sdk.IntValue),
+		HoldersCount:       collections.NewMap(sb, types.HoldersCountKey, "holders_count", collections.StringKey, sdk.Uint64Value),
+		HoldersSortedIndex: collections.NewMap(sb, types.HoldersSortedIndexKey, "holders_sorted_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), codec.BoolValue),
+		OriginChainIndex:   collections.NewMap(sb, types.OriginChainIndexKey, "origin_chain_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), collections.StringValue),
+		ChainHoldersIndex:  collections.NewMap(sb, types.ChainHoldersIndexKey, "chain_holders_index", collections.TripleKeyCodec(collections.Uint64Key, collections.Uint64Key, collections.StringKey), codec.BoolValue),
+		DenomMetadata:      collections.NewMap(sb, types.DenomMetadataPrefix, "denom_metadata", collections.StringKey, codec.CollValue[types.Metadata](cdc)),
+		SendEnabled:        collections.NewMap(sb, types.SendEnabledPrefix, "send_enabled", collections.StringKey, codec.BoolValue), // NOTE: we use a bool value which uses protobuf to retain state backwards compat
+		Balances:           collections.NewIndexedMap(sb, types.BalancesPrefix, "balances", collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey), types.BalanceValueCodec, newBalancesIndexes(sb)),
+		Params:             collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
 	}
 
 	schema, err := sb.Build()
@@ -251,4 +261,43 @@ func (k BaseViewKeeper) ValidateBalance(ctx context.Context, addr sdk.AccAddress
 	}
 
 	return nil
+}
+
+// iterateBalancesByHoldersCountForAddress optimized for a specific address
+func (k BaseViewKeeper) iterateBalancesByHoldersCountForAddress(
+	ctx context.Context,
+	addr sdk.AccAddress,
+	pageReq *query.PageRequest,
+	cb func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool,
+) (*query.PageResponse, error) {
+	// Use HoldersSortedIndex to get the denoms sorted by holders count
+	// and filter to keep only those that the specified address holds
+	_, pageRes, err := query.CollectionPaginate(
+		ctx,
+		k.HoldersSortedIndex,
+		pageReq,
+		func(key collections.Pair[uint64, string], _ bool) (bool, error) {
+			denom := key.K2()
+			holdersCount := ^key.K1() // Get the true number (inverted for sorting)
+
+			// Check if this address holds this denom
+			amt, err := k.Balances.Get(ctx, collections.Join(addr, denom))
+			if err != nil {
+				// If the error is "not found", ignore this denom
+				if errors.Is(err, collections.ErrNotFound) {
+					return false, nil
+				}
+				return false, err
+			}
+
+			// The address holds this denom, call the callback
+			if !amt.IsZero() {
+				return cb(addr, sdk.NewCoin(denom, amt), holdersCount), nil
+			}
+
+			return false, nil
+		},
+	)
+
+	return pageRes, err
 }

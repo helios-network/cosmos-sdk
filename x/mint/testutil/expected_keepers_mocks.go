@@ -51,19 +51,34 @@ func (mr *MockStakingKeeperMockRecorder) BondedRatio(ctx interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BondedRatio", reflect.TypeOf((*MockStakingKeeper)(nil).BondedRatio), ctx)
 }
 
-// StakingTokenSupply mocks base method.
-func (m *MockStakingKeeper) StakingTokenSupply(ctx context.Context) (math.Int, error) {
+// HeliosDenom mocks base method.
+func (m *MockStakingKeeper) HeliosDenom(ctx context.Context) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StakingTokenSupply", ctx)
+	ret := m.ctrl.Call(m, "HeliosDenom", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HeliosDenom indicates an expected call of HeliosDenom.
+func (mr *MockStakingKeeperMockRecorder) HeliosDenom(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HeliosDenom", reflect.TypeOf((*MockStakingKeeper)(nil).HeliosDenom), ctx)
+}
+
+// TotalHeliosSupply mocks base method.
+func (m *MockStakingKeeper) TotalHeliosSupply(ctx context.Context) (math.Int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TotalHeliosSupply", ctx)
 	ret0, _ := ret[0].(math.Int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// StakingTokenSupply indicates an expected call of StakingTokenSupply.
-func (mr *MockStakingKeeperMockRecorder) StakingTokenSupply(ctx interface{}) *gomock.Call {
+// TotalHeliosSupply indicates an expected call of TotalHeliosSupply.
+func (mr *MockStakingKeeperMockRecorder) TotalHeliosSupply(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StakingTokenSupply", reflect.TypeOf((*MockStakingKeeper)(nil).StakingTokenSupply), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TotalHeliosSupply", reflect.TypeOf((*MockStakingKeeper)(nil).TotalHeliosSupply), ctx)
 }
 
 // MockAccountKeeper is a mock of AccountKeeper interface.

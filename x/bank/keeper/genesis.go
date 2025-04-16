@@ -36,6 +36,9 @@ func (k BaseKeeper) InitGenesis(ctx context.Context, genState *types.GenesisStat
 			if err != nil {
 				panic(err)
 			}
+			if !coin.Amount.IsZero() { // new holder
+				k.updateHoldersCount(ctx, coin.Denom, false)
+			}
 		}
 
 		totalSupplyMap.Add(balance.Coins...)

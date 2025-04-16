@@ -59,25 +59,77 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	balances, pageRes, err := query.CollectionPaginate(
+
+	balances := []sdk.Coin{}
+
+	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
 		ctx,
-		k.Balances,
+		addr,
 		req.Pagination,
-		func(key collections.Pair[sdk.AccAddress, string], value math.Int) (sdk.Coin, error) {
+		func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool {
 			if req.ResolveDenom {
-				if metadata, ok := k.GetDenomMetaData(sdkCtx, key.K2()); ok {
-					return sdk.NewCoin(metadata.Display, value), nil
+				if metadata, ok := k.GetDenomMetaData(sdkCtx, coin.Denom); ok {
+					balances = append(balances, sdk.NewCoin(metadata.Display, coin.Amount))
+					return true
 				}
 			}
-			return sdk.NewCoin(key.K2(), value), nil
+			if req.ResolveSymbol {
+				if metadata, ok := k.GetDenomMetaData(sdkCtx, coin.Denom); ok {
+					balances = append(balances, sdk.NewCoin(metadata.Symbol, coin.Amount))
+					return true
+				}
+			}
+			balances = append(balances, coin)
+			return true
 		},
-		query.WithCollectionPaginationPairPrefix[sdk.AccAddress, string](addr),
 	)
+
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "paginate: %v", err)
 	}
 
 	return &types.QueryAllBalancesResponse{Balances: balances, Pagination: pageRes}, nil
+}
+
+func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.QueryAllBalancesWithFullMetadataRequest) (*types.QueryAllBalancesWithFullMetadataResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	addr, err := k.ak.AddressCodec().StringToBytes(req.Address)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid address: %s", err.Error())
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	balances := []*types.TokenBalanceWithFullMetadata{}
+
+	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
+		ctx,
+		addr,
+		req.Pagination,
+		func(address sdk.AccAddress, coin sdk.Coin, holdersCount uint64) bool {
+
+			fullMetadata, err := k.DenomFullMetadata(sdkCtx, &types.QueryDenomFullMetadataRequest{
+				Denom: coin.Denom,
+			})
+			if err != nil {
+				return false
+			}
+			balances = append(balances, &types.TokenBalanceWithFullMetadata{
+				FullMetadata: &fullMetadata.Metadata,
+				Balance:      coin.Amount,
+			})
+			return true
+		},
+	)
+
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "paginate: %v", err)
+	}
+
+	return &types.QueryAllBalancesWithFullMetadataResponse{Balances: balances, Pagination: pageRes}, nil
 }
 
 // SpendableBalances implements a gRPC query handler for retrieving an account's
@@ -239,6 +291,83 @@ func (k BaseKeeper) DenomMetadataByQueryString(c context.Context, req *types.Que
 	return &types.QueryDenomMetadataByQueryStringResponse{Metadata: res.Metadata}, nil
 }
 
+// DenomsFullMetadata implements Query/DenomsFullMetadata gRPC method.
+func (k BaseKeeper) DenomsFullMetadata(c context.Context, req *types.QueryDenomsFullMetadataRequest) (*types.QueryDenomsFullMetadataResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	metadataList, pageRes, err := query.CollectionPaginate(
+		c,
+		k.HoldersSortedIndex,
+		req.Pagination,
+		func(key collections.Pair[uint64, string], _ bool) (types.FullMetadata, error) {
+			denom := key.K2()
+			metadata, _ := k.GetDenomMetaData(c, denom)
+			holdersCount := ^key.K1()
+
+			return types.FullMetadata{
+				Metadata:     &metadata,
+				TotalSupply:  k.GetSupply(c, metadata.Base).Amount,
+				HoldersCount: holdersCount,
+			}, nil
+		},
+	)
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
+	}
+
+	return &types.QueryDenomsFullMetadataResponse{
+		Metadatas:  metadataList,
+		Pagination: pageRes,
+	}, nil
+}
+
+// DenomFullMetadata implements Query/DenomFullMetadata gRPC method.
+func (k BaseKeeper) DenomFullMetadata(c context.Context, req *types.QueryDenomFullMetadataRequest) (*types.QueryDenomFullMetadataResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	if err := sdk.ValidateDenom(req.Denom); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	ctx := sdk.UnwrapSDKContext(c)
+
+	metadata, found := k.GetDenomMetaData(ctx, req.Denom)
+	if !found {
+		return nil, status.Errorf(codes.NotFound, "client metadata for denom %s", req.Denom)
+	}
+
+	holdersCount, _ := k.HoldersCount.Get(c, metadata.Base)
+
+	return &types.QueryDenomFullMetadataResponse{
+		Metadata: types.FullMetadata{
+			Metadata:     &metadata,
+			TotalSupply:  k.GetSupply(c, metadata.Base).Amount,
+			HoldersCount: holdersCount,
+		},
+	}, nil
+}
+
+// DenomFullMetadataByQueryString is identical to DenomFullMetadata query, but receives request via query string.
+func (k BaseKeeper) DenomFullMetadataByQueryString(c context.Context, req *types.QueryDenomFullMetadataByQueryStringRequest) (*types.QueryDenomFullMetadataByQueryStringResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	res, err := k.DenomFullMetadata(c, &types.QueryDenomFullMetadataRequest{
+		Denom: req.Denom,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.QueryDenomFullMetadataByQueryStringResponse{Metadata: res.Metadata}, nil
+}
+
 func (k BaseKeeper) DenomOwners(
 	ctx context.Context,
 	req *types.QueryDenomOwnersRequest,
@@ -269,6 +398,24 @@ func (k BaseKeeper) DenomOwners(
 	}
 
 	return &types.QueryDenomOwnersResponse{DenomOwners: denomOwners, Pagination: pageRes}, nil
+}
+
+// DenomOwnersCount returns the total number of addresses holding a specific denomination
+func (k BaseKeeper) DenomOwnersCount(ctx context.Context, req *types.QueryDenomOwnersCountRequest) (*types.QueryDenomOwnersCountResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	if err := sdk.ValidateDenom(req.Denom); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	count, err := k.HoldersCount.Get(ctx, req.Denom)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to count denom owners: %v", err)
+	}
+
+	return &types.QueryDenomOwnersCountResponse{Count: count}, nil
 }
 
 func (k BaseKeeper) SendEnabled(goCtx context.Context, req *types.QuerySendEnabledRequest) (*types.QuerySendEnabledResponse, error) {
@@ -315,4 +462,95 @@ func (k BaseKeeper) DenomOwnersByQuery(ctx context.Context, req *types.QueryDeno
 	}
 
 	return &types.QueryDenomOwnersByQueryResponse{DenomOwners: resp.DenomOwners, Pagination: resp.Pagination}, nil
+}
+
+func (k BaseKeeper) DenomsByChainId(c context.Context, req *types.QueryDenomsByChainIdRequest) (*types.QueryDenomsByChainIdResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "empty request")
+	}
+
+	if req.ChainId == 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "chain_id cannot be empty")
+	}
+
+	ctx := sdk.UnwrapSDKContext(c)
+
+	// Si l'option de tri par nombre de détenteurs est activée, utiliser l'index optimisé
+	if req.OrderByHoldersCount {
+		// Utiliser ChainHoldersIndex qui est déjà trié par nombre de détenteurs pour chaque chainId
+		denomsList, pageRes, err := query.CollectionPaginate(
+			ctx,
+			k.ChainHoldersIndex,
+			req.Pagination,
+			func(key collections.Triple[uint64, uint64, string], _ bool) (types.FullMetadata, error) {
+				// Vérifier que le chainId correspond
+				if key.K1() != req.ChainId {
+					return types.FullMetadata{}, nil
+				}
+
+				denom := key.K3()
+				holdersCount := ^key.K2() // Inverser pour retrouver le vrai nombre
+
+				// Récupérer les métadonnées complètes
+				metadata, found := k.GetDenomMetaData(ctx, denom)
+				if !found {
+					return types.FullMetadata{}, nil
+				}
+
+				return types.FullMetadata{
+					Metadata:     &metadata,
+					TotalSupply:  k.GetSupply(c, denom).Amount,
+					HoldersCount: holdersCount,
+				}, nil
+			},
+			query.WithCollectionPaginationTriplePrefix[uint64, uint64, string](req.ChainId),
+		)
+
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
+		}
+
+		return &types.QueryDenomsByChainIdResponse{
+			Metadatas:  denomsList,
+			Pagination: pageRes,
+		}, nil
+	}
+
+	// Retrieve the denoms indexed by chainId in a paginated way
+	denomsList, pageRes, err := query.CollectionPaginate(
+		ctx,
+		k.OriginChainIndex,
+		req.Pagination,
+		func(key collections.Pair[uint64, string], value string) (types.FullMetadata, error) {
+			// Check if the first part of the key corresponds to the requested chainId
+			if key.K1() != req.ChainId {
+				return types.FullMetadata{}, nil
+			}
+
+			// Retrieve the full metadata for this denom
+			metadata, found := k.GetDenomMetaData(ctx, value)
+			if !found {
+				return types.FullMetadata{}, nil
+			}
+
+			// Retrieve the number of holders and provide the full metadata
+			holdersCount, _ := k.HoldersCount.Get(c, value)
+
+			return types.FullMetadata{
+				Metadata:     &metadata,
+				TotalSupply:  k.GetSupply(c, value).Amount,
+				HoldersCount: holdersCount,
+			}, nil
+		},
+		query.WithCollectionPaginationPairPrefix[uint64, string](req.ChainId),
+	)
+
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
+	}
+
+	return &types.QueryDenomsByChainIdResponse{
+		Metadatas:  denomsList,
+		Pagination: pageRes,
+	}, nil
 }

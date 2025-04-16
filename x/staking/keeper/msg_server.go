@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"bytes"
 	"context"
 	"strconv"
 	"time"
@@ -115,6 +116,8 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 		return nil, err
 	}
 
+	validator.MinDelegation = msg.MinDelegation
+
 	validator.MinSelfDelegation = msg.MinSelfDelegation
 
 	err = k.SetValidator(ctx, validator)
@@ -140,7 +143,7 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 	// move coins from the msg.Address account to a (self-delegation) delegator account
 	// the validator account and global shares are updated within here
 	// NOTE source will always be from a wallet which are unbonded
-	_, err = k.Keeper.Delegate(ctx, sdk.AccAddress(valAddr), msg.Value.Amount, types.Unbonded, validator, true)
+	_, err = k.Keeper.Delegate(ctx, sdk.AccAddress(valAddr), msg.Value.Amount, msg.Value.Denom, types.Unbonded, validator, true)
 	if err != nil {
 		return nil, err
 	}
@@ -171,6 +174,13 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 		return nil, errorsmod.Wrap(
 			sdkerrors.ErrInvalidRequest,
 			"minimum self delegation must be a positive integer",
+		)
+	}
+
+	if msg.MinDelegation != nil && msg.MinDelegation.LT(math.ZeroInt()) {
+		return nil, errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"minimum delegation must be a positive integer",
 		)
 	}
 
@@ -229,6 +239,12 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 		validator.MinSelfDelegation = *msg.MinSelfDelegation
 	}
 
+	if msg.MinDelegation != nil {
+		validator.MinDelegation = *msg.MinDelegation
+	}
+
+	validator.DelegateAuthorization = *&msg.DelegateAuthorization
+
 	err = k.SetValidator(ctx, validator)
 	if err != nil {
 		return nil, err
@@ -248,6 +264,12 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 
 // Delegate defines a method for performing a delegation of coins from a delegator to a validator
 func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types.MsgDelegateResponse, error) {
+
+	bondDenom, err := k.BondDenom(ctx)
+	if err != nil {
+		return nil, sdkerrors.ErrInvalidAddress.Wrapf("can't find the denom")
+	}
+
 	valAddr, valErr := k.validatorAddressCodec.StringToBytes(msg.ValidatorAddress)
 	if valErr != nil {
 		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid validator address: %s", valErr)
@@ -270,21 +292,22 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 		return nil, err
 	}
 
-	bondDenom, err := k.BondDenom(ctx)
-	if err != nil {
-		return nil, err
+	if !bytes.Equal(valAddr, delegatorAddress) && !validator.DelegateAuthorization {
+		return nil, sdkerrors.ErrUnauthorized.Wrap("delegation not authorized: delegator is not the validator and delegate authorization is false")
 	}
 
-	if msg.Amount.Denom != bondDenom {
-		return nil, errorsmod.Wrapf(
-			sdkerrors.ErrInvalidRequest, "invalid coin denomination: got %s, expected %s", msg.Amount.Denom, bondDenom,
-		)
-	}
-
-	// NOTE: source funds are always unbonded
-	newShares, err := k.Keeper.Delegate(ctx, delegatorAddress, msg.Amount.Amount, types.Unbonded, validator, true)
-	if err != nil {
-		return nil, err
+	var newShares = math.LegacyZeroDec()
+	if msg.Amount.Denom == bondDenom {
+		newShares, err = k.Keeper.DelegateBoost(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, validator)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		//NOTE: source funds are always unbonded
+		newShares, err = k.Keeper.Delegate(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, types.Unbonded, validator, true)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if msg.Amount.Amount.IsInt64() {
@@ -355,7 +378,7 @@ func (k msgServer) BeginRedelegate(ctx context.Context, msg *types.MsgBeginRedel
 	}
 
 	completionTime, err := k.BeginRedelegation(
-		ctx, delegatorAddress, valSrcAddr, valDstAddr, shares,
+		ctx, delegatorAddress, valSrcAddr, valDstAddr, shares, bondDenom,
 	)
 	if err != nil {
 		return nil, err
@@ -400,6 +423,11 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid delegator address: %s", err)
 	}
 
+	validator, err := k.GetValidator(ctx, addr)
+	if err != nil {
+		return nil, sdkerrors.ErrInvalidAddress.Wrapf("validator not found: %s", err)
+	}
+
 	if !msg.Amount.IsValid() || !msg.Amount.Amount.IsPositive() {
 		return nil, errorsmod.Wrap(
 			sdkerrors.ErrInvalidRequest,
@@ -407,27 +435,39 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 		)
 	}
 
+	bondDenom, err := k.BondDenom(ctx)
+	if err != nil {
+		return nil, sdkerrors.ErrInvalidAddress.Wrapf("can't find the denom")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	// if denom is erc20 get the real weighted amount
+	asset, err := k.ConvertAssetToSDKCoin(sdkCtx, msg.Amount.Denom, msg.Amount.Amount)
+	if err != nil {
+		return nil, err
+	}
+
 	shares, err := k.ValidateUnbondAmount(
-		ctx, delegatorAddress, addr, msg.Amount.Amount,
+		ctx, delegatorAddress, addr, asset.Amount,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	bondDenom, err := k.BondDenom(ctx)
-	if err != nil {
-		return nil, err
-	}
+	undelegatedAmt := math.ZeroInt()
+	completionTime := time.Time{}
 
-	if msg.Amount.Denom != bondDenom {
-		return nil, errorsmod.Wrapf(
-			sdkerrors.ErrInvalidRequest, "invalid coin denomination: got %s, expected %s", msg.Amount.Denom, bondDenom,
-		)
-	}
-
-	completionTime, undelegatedAmt, err := k.Keeper.Undelegate(ctx, delegatorAddress, addr, shares)
-	if err != nil {
-		return nil, err
+	if msg.Amount.Denom == bondDenom {
+		completionTime, undelegatedAmt, err = k.Keeper.UnDelegateBoost(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, validator)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		completionTime, undelegatedAmt, err = k.Keeper.Undelegate(ctx, delegatorAddress, addr, shares, msg.Amount.Denom, msg.Amount.Amount)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	undelegatedCoin := sdk.NewCoin(msg.Amount.Denom, undelegatedAmt)
@@ -443,7 +483,6 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 		}()
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeUnbond,
@@ -549,7 +588,7 @@ func (k msgServer) CancelUnbondingDelegation(ctx context.Context, msg *types.Msg
 	}
 
 	// delegate back the unbonding delegation amount to the validator
-	_, err = k.Keeper.Delegate(ctx, delegatorAddress, msg.Amount.Amount, types.Unbonding, validator, false)
+	_, err = k.Keeper.Delegate(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, types.Unbonding, validator, false)
 	if err != nil {
 		return nil, err
 	}

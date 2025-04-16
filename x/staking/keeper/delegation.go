@@ -18,6 +18,63 @@ import (
 )
 
 // GetDelegation returns a specific delegation.
+func (k Keeper) GetDelegationBoost(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (types.DelegationBoost, error) {
+	store := k.storeService.OpenKVStore(ctx)
+	key := types.GetDelegationBoostKey(delAddr, valAddr)
+
+	value, err := store.Get(key)
+	if err != nil {
+		return types.DelegationBoost{}, err
+	}
+
+	if value == nil {
+		return types.DelegationBoost{}, types.ErrNoDelegation
+	}
+
+	return types.UnmarshalDelegationBoost(k.cdc, value)
+}
+
+// GetTotalBoostedDelegation calculates the total boost amount for a given validator.
+// It iterates over all boost index keys for the validator (set via SetDelegationBoost)
+// and sums the boost amounts from each boost record.
+func (k Keeper) GetTotalBoostedDelegation(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error) {
+	// Initialize the total boost as zero (in decimal form)
+	totalBoosted := math.LegacyZeroDec()
+
+	// Open the KVStore
+	store := k.storeService.OpenKVStore(ctx)
+	// Use the boost index prefix for the validator
+	prefix := types.GetDelegationsBoostByValPrefixKey(val)
+	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return totalBoosted, err
+	}
+	defer iterator.Close()
+
+	// Iterate over all keys in the boost index for the given validator
+	for ; iterator.Valid(); iterator.Next() {
+		// Extract the delegator address bytes from the key.
+		// The key is constructed as: GetDelegationsBoostByValPrefixKey(val) || delegatorAddress bytes.
+		delegatorBytes := iterator.Key()[len(prefix):]
+		delegatorAddr := sdk.AccAddress(delegatorBytes)
+
+		// Retrieve the boost record for this (delegator, validator) pair.
+		boostRecord, err := k.GetDelegationBoost(ctx, delegatorAddr, val)
+		if err != nil {
+			// If no boost record exists, skip this entry.
+			continue
+		}
+
+		// Convert the boost amount (math.Int) to a decimal.
+		boostDec := math.LegacyNewDecFromInt(boostRecord.Amount)
+		// Add the boost amount to the total.
+		totalBoosted = totalBoosted.Add(boostDec)
+	}
+
+	return totalBoosted, nil
+}
+
+// GetDelegation returns a specific delegation.
 func (k Keeper) GetDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (types.Delegation, error) {
 	store := k.storeService.OpenKVStore(ctx)
 	key := types.GetDelegationKey(delAddr, valAddr)
@@ -94,6 +151,29 @@ func (k Keeper) GetValidatorDelegations(ctx context.Context, valAddr sdk.ValAddr
 	}
 
 	return delegations, nil
+}
+
+// GetValidatorDelegationsBoost returns all delegation boost records for a given validator.
+// The function uses the boost index (DelegationBoostByValIndexKey) and unmarshals each value as a DelegationBoost.
+func (k Keeper) GetValidatorDelegationsBoost(ctx context.Context, valAddr sdk.ValAddress) ([]types.DelegationBoost, error) {
+	store := k.storeService.OpenKVStore(ctx)
+	prefix := types.GetDelegationsBoostByValPrefixKey(valAddr)
+	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+
+	var boosts []types.DelegationBoost
+	for ; iterator.Valid(); iterator.Next() {
+		boost, err := types.UnmarshalDelegationBoost(k.cdc, iterator.Value())
+		if err != nil {
+			return nil, err
+		}
+		boosts = append(boosts, boost)
+	}
+
+	return boosts, nil
 }
 
 // GetDelegatorDelegations returns a given amount of all the delegations from a
@@ -423,7 +503,7 @@ func (k Keeper) RemoveUnbondingDelegation(ctx context.Context, ubd types.Unbondi
 // the given addresses. It creates the unbonding delegation if it does not exist.
 func (k Keeper) SetUnbondingDelegationEntry(
 	ctx context.Context, delegatorAddr sdk.AccAddress, validatorAddr sdk.ValAddress,
-	creationHeight int64, minTime time.Time, balance math.Int,
+	creationHeight int64, minTime time.Time, balance math.Int, erc20Denom string, erc20Amount math.Int,
 ) (types.UnbondingDelegation, error) {
 	id, err := k.IncrementUnbondingID(ctx)
 	if err != nil {
@@ -433,9 +513,10 @@ func (k Keeper) SetUnbondingDelegationEntry(
 	isNewUbdEntry := true
 	ubd, err := k.GetUnbondingDelegation(ctx, delegatorAddr, validatorAddr)
 	if err == nil {
-		isNewUbdEntry = ubd.AddEntry(creationHeight, minTime, balance, id)
+		isNewUbdEntry = ubd.AddEntry(creationHeight, minTime, balance, id, erc20Denom, erc20Amount)
 	} else if errors.Is(err, types.ErrNoUnbondingDelegation) {
-		ubd = types.NewUnbondingDelegation(delegatorAddr, validatorAddr, creationHeight, minTime, balance, id, k.validatorAddressCodec, k.authKeeper.AddressCodec())
+		ubd = types.NewUnbondingDelegation(delegatorAddr, validatorAddr, creationHeight, minTime, balance, id, k.validatorAddressCodec,
+			k.authKeeper.AddressCodec(), erc20Denom, erc20Amount)
 	} else {
 		return ubd, err
 	}
@@ -858,11 +939,34 @@ func (k Keeper) DequeueAllMatureRedelegationQueue(ctx context.Context, currTime 
 	return matureRedelegations, nil
 }
 
-// Delegate performs a delegation, set/update everything necessary within the store.
-// tokenSrc indicates the bond status of the incoming funds.
-func (k Keeper) Delegate(
-	ctx context.Context, delAddr sdk.AccAddress, bondAmt math.Int, tokenSrc types.BondStatus,
-	validator types.Validator, subtractAccount bool,
+func (k Keeper) SetDelegationBoost(ctx context.Context, delegationBoost types.DelegationBoost) error {
+	delegatorAddress, err := k.authKeeper.AddressCodec().StringToBytes(delegationBoost.DelegatorAddress)
+	if err != nil {
+		return err
+	}
+
+	valAddr, err := k.validatorAddressCodec.StringToBytes(delegationBoost.ValidatorAddress)
+	if err != nil {
+		return err
+	}
+
+	store := k.storeService.OpenKVStore(ctx)
+	b := types.MustMarshalDelegationBoost(k.cdc, delegationBoost)
+	err = store.Set(types.GetDelegationBoostKey(delegatorAddress, valAddr), b)
+	if err != nil {
+		return err
+	}
+
+	// set the delegation in validator delegator index
+	return store.Set(types.GetDelegationsBoostByValKey(valAddr, delegatorAddress), []byte{})
+}
+
+func (k Keeper) DelegateBoost(
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	bondAmt math.Int,
+	bondDenom string,
+	validator types.Validator,
 ) (newShares math.LegacyDec, err error) {
 	// In some situations, the exchange rate becomes invalid, e.g. if
 	// Validator loses all tokens due to slashing. In this case,
@@ -871,6 +975,143 @@ func (k Keeper) Delegate(
 		return math.LegacyZeroDec(), types.ErrDelegatorShareExRateInvalid
 	}
 
+	// Convert validator address
+	valbz, err := k.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
+	if err != nil {
+		return math.LegacyZeroDec(), err
+	}
+
+	// get delegation boost
+	delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
+	if err != nil {
+		delAddrStr, err1 := k.authKeeper.AddressCodec().BytesToString(delAddr)
+		if err1 != nil {
+			return math.LegacyZeroDec(), nil
+		}
+
+		delegationBoost = types.NewDelegationBoost(delAddrStr, validator.GetOperator(), math.NewInt(0))
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	coins := sdk.NewCoins(sdk.NewCoin(bondDenom, bondAmt))
+	err = k.bankKeeper.SendCoinsFromAccountToModule(sdkCtx, delAddr, types.BoostedPoolName, coins)
+	if err != nil {
+		return math.LegacyZeroDec(), err
+	}
+
+	delegationBoost.Amount = delegationBoost.Amount.Add(bondAmt)
+
+	err = k.SetDelegationBoost(ctx, delegationBoost)
+	if err != nil {
+		return math.LegacyZeroDec(), err
+	}
+
+	return math.LegacyZeroDec(), nil
+}
+
+// GetAllDelegationBoosts retrieves all stored delegation boost records.
+// It iterates over the KVStore using the prefix defined by types.DelegationBoostKey
+// and returns a slice of types.DelegationBoost.
+func (k Keeper) GetAllDelegationBoosts(ctx context.Context) ([]types.DelegationBoost, error) {
+	var delegationBoosts []types.DelegationBoost
+	// Open the key-value store.
+	store := k.storeService.OpenKVStore(ctx)
+	// Create an iterator for all keys with the DelegationBoostKey prefix.
+	iterator, err := store.Iterator(types.DelegationBoostKey, storetypes.PrefixEndBytes(types.DelegationBoostKey))
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+
+	// Iterate through all matching keys.
+	for ; iterator.Valid(); iterator.Next() {
+		// Unmarshal the value into a DelegationBoost struct.
+		boost, err := types.UnmarshalDelegationBoost(k.cdc, iterator.Value())
+		if err != nil {
+			return nil, err
+		}
+		// Append the boost record to the slice.
+		delegationBoosts = append(delegationBoosts, boost)
+	}
+	return delegationBoosts, nil
+}
+
+func (k Keeper) UnDelegateBoost(
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	bondAmt math.Int,
+	bondDenom string,
+	validator types.Validator,
+) (time.Time, math.Int, error) {
+	// In some situations, the exchange rate becomes invalid, e.g. if
+	// Validator loses all tokens due to slashing. In this case,
+	// make all future delegations invalid.
+	if validator.InvalidExRate() {
+		return time.Time{}, math.ZeroInt(), types.ErrDelegatorShareExRateInvalid
+	}
+
+	// Convert validator address
+	valbz, err := k.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
+	if err != nil {
+		return time.Time{}, math.ZeroInt(), err
+	}
+
+	// get delegation boost
+	delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
+	if err == nil {
+		return time.Time{}, math.ZeroInt(), fmt.Errorf("failed to undelegate boost: %w", err)
+
+	}
+
+	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	if err == nil {
+		if delegation.TotalWeightedAmount.GT(math.ZeroInt()) {
+			return time.Time{}, math.ZeroInt(), fmt.Errorf("cannot undelegate ahelios until all other assets have been undelegated")
+		}
+	}
+
+	if delegationBoost.Amount.LT(bondAmt) {
+		return time.Time{}, math.ZeroInt(), fmt.Errorf("insufficient boost delegation: minimum required is %s", validator.MinDelegation)
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	coins := sdk.NewCoins(sdk.NewCoin(bondDenom, bondAmt))
+	err = k.bankKeeper.SendCoinsFromModuleToAccount(sdkCtx, types.BoostedPoolName, delAddr, coins)
+	if err != nil {
+		return time.Time{}, math.ZeroInt(), err
+	}
+
+	delegationBoost.Amount = delegationBoost.Amount.Sub(bondAmt)
+
+	err = k.SetDelegationBoost(ctx, delegationBoost)
+	if err != nil {
+		return time.Time{}, math.ZeroInt(), err
+	}
+
+	return time.Time{}, bondAmt, nil
+}
+
+// Delegate performs a delegation, set/update everything necessary within the store.
+func (k Keeper) Delegate(
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	bondAmt math.Int,
+	bondDenom string,
+	tokenSrc types.BondStatus,
+	validator types.Validator,
+	subtractAccount bool,
+) (newShares math.LegacyDec, err error) {
+
+	// In some situations, the exchange rate becomes invalid, e.g. if
+	// Validator loses all tokens due to slashing. In this case,
+	// make all future delegations invalid.
+	if validator.InvalidExRate() {
+		return math.LegacyZeroDec(), types.ErrDelegatorShareExRateInvalid
+	}
+
+	// Convert validator address
 	valbz, err := k.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
 	if err != nil {
 		return math.LegacyZeroDec(), err
@@ -898,9 +1139,6 @@ func (k Keeper) Delegate(
 		return math.LegacyZeroDec(), err
 	}
 
-	// if subtractAccount is true then we are
-	// performing a delegation and not a redelegation, thus the source tokens are
-	// all non bonded
 	if subtractAccount {
 		if tokenSrc == types.Bonded {
 			panic("delegation token source cannot be bonded")
@@ -967,6 +1205,164 @@ func (k Keeper) Delegate(
 	}
 
 	return newShares, nil
+
+	// valOperator, err := sdk.ValAddressFromBech32(validator.GetOperator())
+	// if err != nil {
+	// 	return math.LegacyZeroDec(), err
+	// }
+
+	// if validator.MinDelegation.GT(math.NewInt(0)) && !valOperator.Equals(sdk.ValAddress(delAddr)) {
+	// 	delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
+	// 	if err != nil {
+	// 		return math.LegacyZeroDec(), fmt.Errorf("failed to retrieve delegation boost: %w", err)
+	// 	}
+	// 	if delegationBoost.Amount.LT(validator.MinDelegation) {
+	// 		return math.LegacyZeroDec(), fmt.Errorf("insufficient boost delegation: minimum required is %s", validator.MinDelegation)
+	// 	}
+	// }
+
+	// // Retrieve or create delegation
+	// delegation, err := k.prepareDelegation(ctx, delAddr, valbz, validator)
+	// if err != nil {
+	// 	return math.LegacyZeroDec(), err
+	// }
+
+	// // Convert asset with proper error handling
+	// sdkCtx := sdk.UnwrapSDKContext(ctx)
+	// // return baseDenom with the amount weigted
+	// asset, err := k.ConvertAssetToSDKCoin(sdkCtx, bondDenom, bondAmt)
+	// if err != nil {
+	// 	return math.LegacyZeroDec(), fmt.Errorf("asset %s not found: %w", bondDenom, err)
+	// }
+
+	// // Handle token source and pool transfers
+	// if err := k.handleTokenSourceTransfer(ctx, delAddr, asset, tokenSrc, validator, subtractAccount, sdk.NewCoin(bondDenom, bondAmt)); err != nil {
+	// 	return math.LegacyZeroDec(), err
+	// }
+
+	// // Add validator tokens and shares
+	// _, newShares, err = k.AddValidatorTokensAndShares(ctx, validator, asset.Amount)
+	// if err != nil {
+	// 	return newShares, err
+	// }
+
+	// // Update delegation with asset weights
+	// if err := k.updateDelegationDetails(ctx, &delegation, asset, bondDenom, bondAmt, newShares); err != nil {
+	// 	return newShares, err
+	// }
+
+	// // Call the after-modification hook
+	// if err := k.Hooks().AfterDelegationModified(ctx, delAddr, valbz); err != nil {
+	// 	return newShares, err
+	// }
+
+	// return newShares, nil
+}
+
+// prepareDelegation retrieves or creates a delegation
+func (k Keeper) prepareDelegation(
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	valbz []byte,
+	validator types.Validator,
+) (types.Delegation, error) {
+	// Get or create the delegation object and call the appropriate hook if present
+	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	if err == nil {
+		// found
+		err = k.Hooks().BeforeDelegationSharesModified(ctx, delAddr, valbz)
+	} else if errors.Is(err, types.ErrNoDelegation) {
+		// not found
+		delAddrStr, err1 := k.authKeeper.AddressCodec().BytesToString(delAddr)
+		if err1 != nil {
+			return types.Delegation{}, err1
+		}
+
+		delegation = types.NewDelegation(delAddrStr, validator.GetOperator(), math.LegacyZeroDec())
+		err = k.Hooks().BeforeDelegationCreated(ctx, delAddr, valbz)
+	} else {
+		return types.Delegation{}, err
+	}
+
+	if err != nil {
+		return types.Delegation{}, err
+	}
+
+	return delegation, nil
+}
+
+// handleTokenSourceTransfer manages token transfers based on source and validator status
+func (k Keeper) handleTokenSourceTransfer(
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	asset sdk.Coin,
+	tokenSrc types.BondStatus,
+	validator types.Validator,
+	subtractAccount bool,
+	burnCoin sdk.Coin,
+) error {
+	// If subtractAccount is true, we are performing a delegation and not a redelegation
+	if subtractAccount {
+		if tokenSrc == types.Bonded {
+			return fmt.Errorf("delegation token source cannot be bonded")
+		}
+
+		var sendName string
+		switch {
+		case validator.IsBonded():
+			sendName = types.BondedPoolName
+		case validator.IsUnbonding(), validator.IsUnbonded():
+			sendName = types.NotBondedPoolName
+		default:
+			return fmt.Errorf("invalid validator status")
+		}
+
+		coins := sdk.NewCoins(sdk.NewCoin(asset.Denom, asset.Amount))
+		if burnCoin.Denom == asset.Denom {
+			return k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins)
+		} else {
+			return k.bankKeeper.DelegateErc20FromAccountToModule(ctx, delAddr, sendName, coins, burnCoin)
+		}
+	}
+
+	// Handle token transfers between pools for redelegation
+	switch {
+	case tokenSrc == types.Bonded && validator.IsBonded():
+		// do nothing
+		return nil
+	case (tokenSrc == types.Unbonded || tokenSrc == types.Unbonding) && !validator.IsBonded():
+		// do nothing
+		return nil
+	case (tokenSrc == types.Unbonded || tokenSrc == types.Unbonding) && validator.IsBonded():
+		// transfer from unbonded to bonded pool
+		return k.notBondedTokensToBonded(ctx, asset.Amount)
+	case tokenSrc == types.Bonded && !validator.IsBonded():
+		// transfer from bonded to unbonded pool
+		return k.bondedTokensToNotBonded(ctx, asset.Amount)
+	default:
+		return fmt.Errorf("unknown token source bond status")
+	}
+}
+
+// updateDelegationDetails updates delegation with asset weights and shares
+func (k Keeper) updateDelegationDetails(
+	ctx context.Context,
+	delegation *types.Delegation,
+	asset sdk.Coin,
+	bondDenom string,
+	bondAmt math.Int,
+	newShares math.LegacyDec,
+) error {
+	// Add or update asset weights
+	if err := k.AddOrUpdateAssetWeight(delegation, asset, bondDenom, bondAmt); err != nil {
+		return err
+	}
+
+	// Update delegation shares
+	delegation.Shares = delegation.Shares.Add(newShares)
+
+	// Set delegation with error handling
+	return k.SetDelegation(ctx, *delegation)
 }
 
 // Unbond unbonds a particular delegation and perform associated store operations.
@@ -1102,8 +1498,14 @@ func (k Keeper) getBeginInfo(
 // an unbonding object and inserting it into the unbonding queue which will be
 // processed during the staking EndBlocker.
 func (k Keeper) Undelegate(
-	ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress, sharesAmount math.LegacyDec,
+	ctx context.Context,
+	delAddr sdk.AccAddress,
+	valAddr sdk.ValAddress,
+	sharesAmount math.LegacyDec,
+	erc20Denom string,
+	erc20Amount math.Int,
 ) (time.Time, math.Int, error) {
+
 	validator, err := k.GetValidator(ctx, valAddr)
 	if err != nil {
 		return time.Time{}, math.Int{}, err
@@ -1115,7 +1517,7 @@ func (k Keeper) Undelegate(
 	}
 
 	if hasMaxEntries {
-		return time.Time{}, math.Int{}, types.ErrMaxUnbondingDelegationEntries
+		return time.Time{}, math.Int{}, err
 	}
 
 	returnAmount, err := k.Unbond(ctx, delAddr, valAddr, sharesAmount)
@@ -1123,7 +1525,30 @@ func (k Keeper) Undelegate(
 		return time.Time{}, math.Int{}, err
 	}
 
-	// transfer the validator tokens to the not bonded pool
+	// Get delegation to update asset weights
+	valbz, err := k.ValidatorAddressCodec().StringToBytes(validator.GetOperator())
+	if err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	if err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+
+	// Update asset weight for the specific denom
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	//TODO: to recheck if we remove asset weight after or before completeUnbonding
+	if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, returnAmount, sdkCtx); err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+
+	// Save the updated delegation
+	if err := k.SetDelegation(ctx, delegation); err != nil {
+		return time.Time{}, math.Int{}, err
+	}
+
+	// Rest of the function remains the same...
 	if validator.IsBonded() {
 		err = k.bondedTokensToNotBonded(ctx, returnAmount)
 		if err != nil {
@@ -1136,9 +1561,8 @@ func (k Keeper) Undelegate(
 		return time.Time{}, math.Int{}, err
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	completionTime := sdkCtx.BlockHeader().Time.Add(unbondingTime)
-	ubd, err := k.SetUnbondingDelegationEntry(ctx, delAddr, valAddr, sdkCtx.BlockHeight(), completionTime, returnAmount)
+	ubd, err := k.SetUnbondingDelegationEntry(ctx, delAddr, valAddr, sdkCtx.BlockHeight(), completionTime, returnAmount, erc20Denom, erc20Amount)
 	if err != nil {
 		return time.Time{}, math.Int{}, err
 	}
@@ -1164,7 +1588,6 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 	if err != nil {
 		return nil, err
 	}
-
 	balances := sdk.NewCoins()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	ctxTime := sdkCtx.BlockHeader().Time
@@ -1186,9 +1609,15 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 
 			// track undelegation only when remaining or truncated shares are non-zero
 			if !entry.Balance.IsZero() {
+				if err != nil {
+					return nil, err
+				}
+
 				amt := sdk.NewCoin(bondDenom, entry.Balance)
-				if err := k.bankKeeper.UndelegateCoinsFromModuleToAccount(
-					ctx, types.NotBondedPoolName, delegatorAddress, sdk.NewCoins(amt),
+				erc20 := sdk.NewCoin(entry.Erc20Denom, entry.Erc20Amount)
+				// TODO : will undelegate the coin
+				if err := k.bankKeeper.UndelegateErc20FromModuleToAccount(
+					ctx, types.NotBondedPoolName, delegatorAddress, amt, erc20,
 				); err != nil {
 					return nil, err
 				}
@@ -1215,7 +1644,7 @@ func (k Keeper) CompleteUnbonding(ctx context.Context, delAddr sdk.AccAddress, v
 // BeginRedelegation begins unbonding / redelegation and creates a redelegation
 // record.
 func (k Keeper) BeginRedelegation(
-	ctx context.Context, delAddr sdk.AccAddress, valSrcAddr, valDstAddr sdk.ValAddress, sharesAmount math.LegacyDec,
+	ctx context.Context, delAddr sdk.AccAddress, valSrcAddr, valDstAddr sdk.ValAddress, sharesAmount math.LegacyDec, denom string,
 ) (completionTime time.Time, err error) {
 	if bytes.Equal(valSrcAddr, valDstAddr) {
 		return time.Time{}, types.ErrSelfRedelegation
@@ -1263,7 +1692,7 @@ func (k Keeper) BeginRedelegation(
 		return time.Time{}, types.ErrTinyRedelegationAmount
 	}
 
-	sharesCreated, err := k.Delegate(ctx, delAddr, returnAmount, srcValidator.GetStatus(), dstValidator, false)
+	sharesCreated, err := k.Delegate(ctx, delAddr, returnAmount, denom, srcValidator.GetStatus(), dstValidator, false)
 	if err != nil {
 		return time.Time{}, err
 	}

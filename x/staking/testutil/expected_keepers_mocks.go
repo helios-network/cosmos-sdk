@@ -422,19 +422,19 @@ func (mr *MockValidatorSetMockRecorder) SlashWithInfractionReason(arg0, arg1, ar
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SlashWithInfractionReason", reflect.TypeOf((*MockValidatorSet)(nil).SlashWithInfractionReason), arg0, arg1, arg2, arg3, arg4, arg5)
 }
 
-// StakingTokenSupply mocks base method.
-func (m *MockValidatorSet) StakingTokenSupply(arg0 context.Context) (math.Int, error) {
+// TotalHeliosSupply mocks base method.
+func (m *MockValidatorSet) TotalHeliosSupply(arg0 context.Context) (math.Int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "StakingTokenSupply", arg0)
+	ret := m.ctrl.Call(m, "TotalHeliosSupply", arg0)
 	ret0, _ := ret[0].(math.Int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// StakingTokenSupply indicates an expected call of StakingTokenSupply.
-func (mr *MockValidatorSetMockRecorder) StakingTokenSupply(arg0 interface{}) *gomock.Call {
+// TotalHeliosSupply indicates an expected call of TotalHeliosSupply.
+func (mr *MockValidatorSetMockRecorder) TotalHeliosSupply(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StakingTokenSupply", reflect.TypeOf((*MockValidatorSet)(nil).StakingTokenSupply), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TotalHeliosSupply", reflect.TypeOf((*MockValidatorSet)(nil).TotalHeliosSupply), arg0)
 }
 
 // TotalBondedTokens mocks base method.

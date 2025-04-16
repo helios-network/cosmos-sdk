@@ -26,6 +26,8 @@ const (
 )
 
 var (
+	PreviousEpochValidatorsKey  = []byte{0x01} // Prefix for storing validators active in previous epochs
+	ValidatorLastActiveEpochKey = []byte{0x02} // Prefix for storing the last epoch a validator was active
 	// Keys for store prefixes
 	// Last* values are constant during a block.
 	LastValidatorPowerKey = []byte{0x11} // prefix for each key to a validator index, for bonded validators
@@ -55,7 +57,11 @@ var (
 
 	ParamsKey = []byte{0x51} // prefix for parameters for module x/staking
 
-	DelegationByValIndexKey = []byte{0x71} // key for delegations by a validator
+	DelegationByValIndexKey      = []byte{0x71} // key for delegations by a validator
+	DelegationBoostByValIndexKey = []byte{0x72} // key for delegations by a validator
+
+	DelegationBoostKey = []byte{0x90} // key for a boost delegation
+
 )
 
 // UnbondingType defines the type of unbonding operation
@@ -209,6 +215,12 @@ func ParseValidatorQueueKey(bz []byte) (time.Time, int64, error) {
 
 // GetDelegationKey creates the key for delegator bond with validator
 // VALUE: staking/Delegation
+func GetDelegationBoostKey(delAddr sdk.AccAddress, valAddr sdk.ValAddress) []byte {
+	return append(GetDelegationsBoostKey(delAddr), address.MustLengthPrefix(valAddr)...)
+}
+
+// GetDelegationKey creates the key for delegator bond with validator
+// VALUE: staking/Delegation
 func GetDelegationKey(delAddr sdk.AccAddress, valAddr sdk.ValAddress) []byte {
 	return append(GetDelegationsKey(delAddr), address.MustLengthPrefix(valAddr)...)
 }
@@ -219,9 +231,17 @@ func GetDelegationsByValKey(valAddr sdk.ValAddress, delAddr sdk.AccAddress) []by
 	return append(GetDelegationsByValPrefixKey(valAddr), delAddr...)
 }
 
+func GetDelegationsBoostByValKey(valAddr sdk.ValAddress, delAddr sdk.AccAddress) []byte {
+	return append(GetDelegationsBoostByValPrefixKey(valAddr), delAddr...)
+}
+
 // GetDelegationsByValPrefixKey builds a prefix key bytes with the given validator address bytes.
 func GetDelegationsByValPrefixKey(valAddr sdk.ValAddress) []byte {
 	return append(DelegationByValIndexKey, address.MustLengthPrefix(valAddr)...)
+}
+
+func GetDelegationsBoostByValPrefixKey(valAddr sdk.ValAddress) []byte {
+	return append(DelegationBoostByValIndexKey, address.MustLengthPrefix(valAddr)...)
 }
 
 // ParseDelegationsByValKey parses given key and returns validator, delegator address bytes
@@ -252,6 +272,10 @@ func ParseDelegationsByValKey(bz []byte) (sdk.ValAddress, sdk.AccAddress, error)
 	del := bz
 
 	return val, del, nil
+}
+
+func GetDelegationsBoostKey(delAddr sdk.AccAddress) []byte {
+	return append(DelegationKey, address.MustLengthPrefix(delAddr)...)
 }
 
 // GetDelegationsKey creates the prefix for a delegator for all validators

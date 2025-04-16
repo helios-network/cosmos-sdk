@@ -5,7 +5,7 @@ import (
 	"io"
 	"math"
 
-	"github.com/InjectiveLabs/metrics"
+	"github.com/Helios-Chain-Labs/metrics"
 	dbm "github.com/cosmos/cosmos-db"
 
 	sdkmetrics "cosmossdk.io/store/metrics"
