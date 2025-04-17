@@ -1229,6 +1229,8 @@ func (k Keeper) handleTokenSourceTransfer(
 		}
 
 		coins := sdk.NewCoins(sdk.NewCoin(asset.Denom, asset.Amount))
+
+		// send the asset to the right pools
 		if burnCoin.Denom == asset.Denom {
 			return k.bankKeeper.DelegateCoinsFromAccountToModule(ctx, delAddr, sendName, coins)
 		} else {
@@ -1265,7 +1267,8 @@ func (k Keeper) updateDelegationDetails(
 	newShares math.LegacyDec,
 ) error {
 	// Add or update asset weights
-	if err := k.AddOrUpdateAssetWeight(delegation, asset, bondDenom, bondAmt); err != nil {
+	delegation, err := k.AddOrUpdateAssetWeight(delegation, asset, bondDenom, bondAmt)
+	if err != nil {
 		return err
 	}
 

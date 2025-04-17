@@ -69,49 +69,42 @@ func (k Keeper) AddOrUpdateAssetWeight(
 	asset sdk.Coin, // coin => bondenom : ahelios and amt = weigted
 	bondDenom string, // erc20 or asset bondDenom
 	baseAmount math.Int,
-) error {
+) (*types.Delegation, error) {
 
 	// Validate inputs
 	if delegation == nil {
-		return fmt.Errorf("delegation cannot be nil")
+		return nil, fmt.Errorf("delegation cannot be nil")
 	}
 
 	if asset.IsZero() {
-		return fmt.Errorf("asset amount cannot be zero")
+		return nil, fmt.Errorf("asset amount cannot be zero")
 	}
 
 	if baseAmount.IsNegative() {
-		return fmt.Errorf("base amount cannot be negative")
+		return nil, fmt.Errorf("base amount cannot be negative")
 	}
 
-	// Initialize AssetWeights map if not exists
-	if delegation.AssetWeights == nil {
-		delegation.AssetWeights = make(map[string]*types.AssetWeight)
-	}
+	targetDenom := bondDenom
 
-	// Get or create asset weight for the denom
-	assetWeight, exists := delegation.AssetWeights[bondDenom]
-	if !exists {
-		// Create new asset weight
-		assetWeight = &types.AssetWeight{
-			Denom:          bondDenom,
+	assetWeightIndex := delegation.FindAssetWeightIndex(targetDenom)
+
+	if assetWeightIndex == -1 {
+		delegation.AssetWeights = append(delegation.AssetWeights, &types.AssetWeight{
+			Denom:          targetDenom,
 			BaseAmount:     baseAmount,
 			WeightedAmount: asset.Amount,
-		}
-		delegation.AssetWeights[bondDenom] = assetWeight
+		})
 	} else {
-		// Update existing asset weight
-		assetWeight.BaseAmount = assetWeight.BaseAmount.Add(baseAmount)
-		assetWeight.WeightedAmount = assetWeight.WeightedAmount.Add(asset.Amount)
+		delegation.AssetWeights[assetWeightIndex].BaseAmount = delegation.AssetWeights[assetWeightIndex].BaseAmount.Add(baseAmount)
+		delegation.AssetWeights[assetWeightIndex].WeightedAmount = delegation.AssetWeights[assetWeightIndex].WeightedAmount.Add(asset.Amount)
 	}
-
 	// Recalculate total weighted amount
 	delegation.TotalWeightedAmount = math.ZeroInt()
 	for _, aw := range delegation.AssetWeights {
 		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Add(aw.WeightedAmount)
 	}
 
-	return nil
+	return delegation, nil
 }
 
 // ConvertWeightedToRealAsset converts a weighted amount back to the actual asset amount.
@@ -186,10 +179,13 @@ func (k Keeper) UpdateOrRemoveAssetWeight(
 		return fmt.Errorf("delegation has no asset weights")
 	}
 
-	assetWeight, exists := delegation.AssetWeights[denom]
-	if !exists {
+	assetWeightIndex := delegation.FindAssetWeightIndex(denom)
+
+	if assetWeightIndex == -1 {
 		return fmt.Errorf("insufficient balance %s", denom)
 	}
+
+	assetWeight := delegation.AssetWeights[assetWeightIndex]
 
 	if amountToRemove.IsNegative() {
 		return fmt.Errorf("amount to remove cannot be negative")
@@ -204,7 +200,7 @@ func (k Keeper) UpdateOrRemoveAssetWeight(
 
 	if newWeightedAmount.IsZero() {
 		// Remove the entire asset weight if no amount remains
-		delete(delegation.AssetWeights, denom)
+		delegation.AssetWeights = append(delegation.AssetWeights[:assetWeightIndex], delegation.AssetWeights[assetWeightIndex+1:]...)
 	} else {
 		// Update the asset weight with reduced amount
 		assetWeight.WeightedAmount = newWeightedAmount
@@ -223,7 +219,7 @@ func (k Keeper) UpdateOrRemoveAssetWeight(
 		baseAmountToRemove := amountToRemove.Quo(weightFactor)
 		assetWeight.BaseAmount = assetWeight.BaseAmount.Sub(baseAmountToRemove)
 
-		delegation.AssetWeights[denom] = assetWeight
+		delegation.AssetWeights[assetWeightIndex] = assetWeight
 	}
 
 	// Recalculate total weighted amount
@@ -274,7 +270,9 @@ func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math
 		totalValidatorDiff := math.ZeroInt()
 
 		for i, delegation := range delegations {
-			if assetWeight, exists := delegation.AssetWeights[denom]; exists {
+			assetWeightIndex := delegation.FindAssetWeightIndex(denom)
+			if assetWeightIndex != -1 {
+				assetWeight := delegation.AssetWeights[assetWeightIndex]
 				oldWeightedAmount := assetWeight.WeightedAmount
 
 				// Calculate adjustment
@@ -286,7 +284,7 @@ func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math
 				}
 
 				// Update the asset weight
-				delegation.AssetWeights[denom] = assetWeight
+				delegation.AssetWeights[assetWeightIndex] = assetWeight
 
 				// Calculate total difference for this delegation
 				totalDiff := assetWeight.WeightedAmount.Sub(oldWeightedAmount)
