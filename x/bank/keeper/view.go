@@ -67,6 +67,7 @@ type BaseViewKeeper struct {
 	Schema             collections.Schema
 	Supply             collections.Map[string, math.Int]
 	HoldersCount       collections.Map[string, uint64]
+	TokensCount		   collections.Map[string, uint64]
 	HoldersSortedIndex collections.Map[collections.Pair[uint64, string], bool]
 	OriginChainIndex   collections.Map[collections.Pair[uint64, string], string]
 	ChainHoldersIndex  collections.Map[collections.Triple[uint64, uint64, string], bool]

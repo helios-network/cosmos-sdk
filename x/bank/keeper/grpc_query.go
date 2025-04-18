@@ -129,7 +129,13 @@ func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.
 		return nil, status.Errorf(codes.InvalidArgument, "paginate: %v", err)
 	}
 
-	return &types.QueryAllBalancesWithFullMetadataResponse{Balances: balances, Pagination: pageRes}, nil
+	totalCount, err := k.BaseViewKeeper.TokensCount.Get(ctx, req.Address)
+
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "totalCount: %v", err)
+	}
+
+	return &types.QueryAllBalancesWithFullMetadataResponse{Balances: balances, Pagination: pageRes, TotalCount: totalCount}, nil
 }
 
 // SpendableBalances implements a gRPC query handler for retrieving an account's
