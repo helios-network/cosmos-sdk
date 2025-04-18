@@ -232,7 +232,7 @@ func (k Keeper) UpdateOrRemoveAssetWeight(
 }
 
 // When asset weight is updated through governance
-func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math.LegacyDec, increase bool) error {
+func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math.LegacyDec, increase bool, originalWeight uint64) error {
 	// Pre-fetch staking asset weights
 	stakingAssets := k.erc20Keeper.GetAllStakingAssets(ctx)
 	assetWeightMap := make(map[string]math.Int)
@@ -275,12 +275,19 @@ func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math
 				assetWeight := delegation.AssetWeights[assetWeightIndex]
 				oldWeightedAmount := assetWeight.WeightedAmount
 
-				// Calculate adjustment
-				adjustmentAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(percentage)
-				if increase {
-					assetWeight.WeightedAmount = assetWeight.WeightedAmount.Add(adjustmentAmount.TruncateInt())
+				// Determine update method
+				if originalWeight > 0 {
+					// Direct 1:1 conversion mode (used for archiving)
+					originalWeightInt := math.NewIntFromUint64(originalWeight)
+					assetWeight.WeightedAmount = assetWeight.WeightedAmount.Quo(originalWeightInt)
 				} else {
-					assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(adjustmentAmount.TruncateInt())
+					// Percentage-based update mode
+					adjustmentAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(percentage)
+					if increase {
+						assetWeight.WeightedAmount = assetWeight.WeightedAmount.Add(adjustmentAmount.TruncateInt())
+					} else {
+						assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(adjustmentAmount.TruncateInt())
+					}
 				}
 
 				// Update the asset weight
