@@ -235,7 +235,7 @@ message Delegation {
   ];
 
   // Changed from repeated to map
-  map<string, AssetWeight> asset_weights = 4;
+  repeated AssetWeight asset_weights = 4;
 
   // Total weighted amount across all assets
   string total_weighted_amount = 5 [

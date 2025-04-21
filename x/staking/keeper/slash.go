@@ -183,26 +183,26 @@ func (k Keeper) Slash(ctx context.Context, consAddr sdk.ConsAddress, infractionH
 
 	for i, delegation := range delegations {
 		totalDelegationDiff := math.ZeroInt()
-		for denom, assetWeight := range delegation.AssetWeights {
+		for assetWeightIndex, assetWeight := range delegation.AssetWeights {
 			// Convert WeightedAmount to Dec before multiplying with slashFactor
 			reductionAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(slashFactor).TruncateInt()
 			assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(reductionAmount)
 
 			if assetWeight.WeightedAmount.IsZero() {
-				delete(delegation.AssetWeights, denom)
+				delegation.AssetWeights = append(delegation.AssetWeights[:assetWeightIndex], delegation.AssetWeights[assetWeightIndex+1:]...)
 			} else {
-				delegation.AssetWeights[denom] = assetWeight
+				delegation.AssetWeights[assetWeightIndex] = assetWeight
 			}
 			totalDelegationDiff = totalDelegationDiff.Add(reductionAmount)
 
 			// add into slashed assets
-			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, denom, reductionAmount)
+			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, assetWeight.Denom, reductionAmount)
 			if err != nil {
-				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", denom, "error", err)
+				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", assetWeight.Denom, "error", err)
 				continue
 			}
 
-			slashedAssets[denom] = realAssetSlashed
+			slashedAssets[assetWeight.Denom] = realAssetSlashed
 		}
 		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Sub(totalDelegationDiff)
 		delegations[i] = delegation
@@ -337,25 +337,25 @@ func (k Keeper) SlashUnbondingDelegation(ctx context.Context, unbondingDelegatio
 		}
 
 		// Adjust Asset Weights
-		for denom, assetWeight := range delegation.AssetWeights {
+		for assetWeightIndex, assetWeight := range delegation.AssetWeights {
 			// Convert WeightedAmount to Dec before multiplying with slashFactor
 			reductionAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(slashFactor).TruncateInt()
 			assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(reductionAmount)
 
 			if assetWeight.WeightedAmount.IsZero() {
-				delete(delegation.AssetWeights, denom)
+				delegation.AssetWeights = append(delegation.AssetWeights[:assetWeightIndex], delegation.AssetWeights[assetWeightIndex+1:]...)
 			} else {
-				delegation.AssetWeights[denom] = assetWeight
+				delegation.AssetWeights[assetWeightIndex] = assetWeight
 			}
 
 			// add into slashed assets
-			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, denom, reductionAmount)
+			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, assetWeight.Denom, reductionAmount)
 			if err != nil {
-				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", denom, "error", err)
+				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", assetWeight.Denom, "error", err)
 				continue
 			}
 
-			slashedAssets[denom] = realAssetSlashed
+			slashedAssets[assetWeight.Denom] = realAssetSlashed
 		}
 
 		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Sub(totalSlashAmount)
@@ -496,29 +496,29 @@ func (k Keeper) SlashRedelegation(ctx context.Context, srcValidator types.Valida
 		}
 
 		// NEW: Adjust Asset Weights and Collect Slashed Assets
-		for denom, assetWeight := range delegation.AssetWeights {
+		for assetWeightIndex, assetWeight := range delegation.AssetWeights {
 			// Convert WeightedAmount to Dec before multiplying with slashFactor
 			reductionAmount := math.LegacyNewDecFromInt(assetWeight.WeightedAmount).Mul(slashFactor).TruncateInt()
 			assetWeight.WeightedAmount = assetWeight.WeightedAmount.Sub(reductionAmount)
 
 			if assetWeight.WeightedAmount.IsZero() {
-				delete(delegation.AssetWeights, denom)
+				delegation.AssetWeights = append(delegation.AssetWeights[:assetWeightIndex], delegation.AssetWeights[assetWeightIndex+1:]...)
 			} else {
-				delegation.AssetWeights[denom] = assetWeight
+				delegation.AssetWeights[assetWeightIndex] = assetWeight
 			}
 
 			// add into slashed assets
-			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, denom, reductionAmount)
+			realAssetSlashed, err := k.ConvertWeightedToRealAsset(sdkCtx, assetWeight.Denom, reductionAmount)
 			if err != nil {
-				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", denom, "error", err)
+				k.Logger(ctx).Error("Failed to convert weighted asset", "denom", assetWeight.Denom, "error", err)
 				continue
 			}
 
 			// Accumulate slashed assets
-			if existingCoin, ok := slashedAssets[denom]; ok {
-				slashedAssets[denom] = existingCoin.Add(realAssetSlashed)
+			if existingCoin, ok := slashedAssets[assetWeight.Denom]; ok {
+				slashedAssets[assetWeight.Denom] = existingCoin.Add(realAssetSlashed)
 			} else {
-				slashedAssets[denom] = realAssetSlashed
+				slashedAssets[assetWeight.Denom] = realAssetSlashed
 			}
 		}
 

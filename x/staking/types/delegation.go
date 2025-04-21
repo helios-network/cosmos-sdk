@@ -21,6 +21,7 @@ func NewDelegation(delegatorAddr, validatorAddr string, shares math.LegacyDec) D
 		DelegatorAddress: delegatorAddr,
 		ValidatorAddress: validatorAddr,
 		Shares:           shares,
+		AssetWeights:     make([]*AssetWeight, 0),
 	}
 }
 
@@ -72,8 +73,17 @@ func (d Delegation) GetValidatorAddr() string {
 }
 func (d Delegation) GetShares() math.LegacyDec { return d.Shares }
 
-func (d Delegation) GetAssetWeight() map[string]*AssetWeight {
+func (d Delegation) GetAssetWeight() []*AssetWeight {
 	return d.AssetWeights
+}
+
+func (d Delegation) FindAssetWeightIndex(denom string) int {
+	for i, assetWeight := range d.AssetWeights {
+		if assetWeight.Denom == denom {
+			return i
+		}
+	}
+	return -1
 }
 
 func (d Delegation) GetTotalWeightedAmount() math.Int {
@@ -320,7 +330,7 @@ func (d Redelegations) String() (out string) {
 
 // NewDelegationResp creates a new DelegationResponse instance
 func NewDelegationResp(
-	delegatorAddr, validatorAddr string, shares math.LegacyDec, assetWeight map[string]*AssetWeight, totalWeightedAmount math.Int, balance sdk.Coin,
+	delegatorAddr, validatorAddr string, shares math.LegacyDec, assetWeight []*AssetWeight, totalWeightedAmount math.Int, balance sdk.Coin,
 ) DelegationResponse {
 	return DelegationResponse{
 		Delegation: Delegation{
