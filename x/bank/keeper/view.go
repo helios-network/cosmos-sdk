@@ -67,6 +67,7 @@ type BaseViewKeeper struct {
 	Schema             collections.Schema
 	Supply             collections.Map[string, math.Int]
 	HoldersCount       collections.Map[string, uint64]
+	TokensCount        collections.Map[string, uint64]
 	HoldersSortedIndex collections.Map[collections.Pair[uint64, string], bool]
 	OriginChainIndex   collections.Map[collections.Pair[uint64, string], string]
 	ChainHoldersIndex  collections.Map[collections.Triple[uint64, uint64, string], bool]
@@ -87,6 +88,7 @@ func NewBaseViewKeeper(cdc codec.BinaryCodec, storeService store.KVStoreService,
 		logger:             logger,
 		Supply:             collections.NewMap(sb, types.SupplyKey, "supply", collections.StringKey, sdk.IntValue),
 		HoldersCount:       collections.NewMap(sb, types.HoldersCountKey, "holders_count", collections.StringKey, sdk.Uint64Value),
+		TokensCount:        collections.NewMap(sb, types.TokensCountKey, "tokens_count", collections.StringKey, sdk.Uint64Value),
 		HoldersSortedIndex: collections.NewMap(sb, types.HoldersSortedIndexKey, "holders_sorted_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), codec.BoolValue),
 		OriginChainIndex:   collections.NewMap(sb, types.OriginChainIndexKey, "origin_chain_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), collections.StringValue),
 		ChainHoldersIndex:  collections.NewMap(sb, types.ChainHoldersIndexKey, "chain_holders_index", collections.TripleKeyCodec(collections.Uint64Key, collections.Uint64Key, collections.StringKey), codec.BoolValue),

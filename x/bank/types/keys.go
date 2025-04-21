@@ -47,6 +47,9 @@ var (
 
 	// ChainHoldersIndexKey is the prefix for the chain holders index for a Denom.
 	ChainHoldersIndexKey = collections.NewPrefix(9)
+
+	// TokensCountKey is the prefix for the tokens count for a holder.
+	TokensCountKey = collections.NewPrefix(10)
 )
 
 // BalanceValueCodec is a codec for encoding bank balances in a backwards compatible way.
