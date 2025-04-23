@@ -305,6 +305,12 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 		}
 
 		k.updateHoldersCount(ctx, balance, newBalance)
+
+		if !balance.IsZero() && newBalance.IsZero() {
+			oldCount, _ := k.TokensCount.Get(ctx, addr.String())
+			newCount := oldCount - 1
+			k.TokensCount.Set(ctx, addr.String(), newCount)
+		}
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -411,6 +417,12 @@ func (k BaseSendKeeper) addCoins(ctx context.Context, addr sdk.AccAddress, amt s
 		}
 
 		k.updateHoldersCount(ctx, balance, newBalance)
+
+		if balance.IsZero() && !newBalance.IsZero() {
+			oldCount, _ := k.TokensCount.Get(ctx, addr.String())
+			newCount := oldCount + 1
+			k.TokensCount.Set(ctx, addr.String(), newCount)
+		}
 	}
 
 	// emit coin received event
