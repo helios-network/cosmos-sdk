@@ -32,6 +32,7 @@ func (k BaseKeeper) InitGenesis(ctx context.Context, genState *types.GenesisStat
 		}
 
 		for _, coin := range balance.Coins {
+			oldBalance := k.GetBalance(ctx, sdk.AccAddress(bz), coin.Denom)
 			err := k.Balances.Set(ctx, collections.Join(sdk.AccAddress(bz), coin.Denom), coin.Amount)
 			if err != nil {
 				panic(err)
@@ -39,6 +40,8 @@ func (k BaseKeeper) InitGenesis(ctx context.Context, genState *types.GenesisStat
 			if !coin.Amount.IsZero() { // new holder
 				k.updateHoldersCount(ctx, coin.Denom, false)
 			}
+			newBalance := k.GetBalance(ctx, sdk.AccAddress(bz), coin.Denom)
+			k.updateTokenCount(ctx, oldBalance, newBalance, sdk.AccAddress(bz))
 		}
 
 		totalSupplyMap.Add(balance.Coins...)

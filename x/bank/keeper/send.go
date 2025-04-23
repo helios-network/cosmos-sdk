@@ -305,12 +305,7 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 		}
 
 		k.updateHoldersCount(ctx, balance, newBalance)
-
-		if !balance.IsZero() && newBalance.IsZero() {
-			oldCount, _ := k.TokensCount.Get(ctx, addr.String())
-			newCount := oldCount - 1
-			k.TokensCount.Set(ctx, addr.String(), newCount)
-		}
+		k.updateTokenCount(ctx, balance, newBalance, addr)
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
@@ -396,6 +391,18 @@ func (k BaseSendKeeper) updateHoldersCount(ctx context.Context, balance sdk.Coin
 	}
 }
 
+func (k BaseSendKeeper) updateTokenCount(ctx context.Context, balance sdk.Coin, newBalance sdk.Coin, addr sdk.AccAddress) {
+	if balance.IsZero() && !newBalance.IsZero() {
+		oldCount, _ := k.TokensCount.Get(ctx, addr.String())
+		newCount := oldCount + 1
+		k.TokensCount.Set(ctx, addr.String(), newCount)
+	} else if !balance.IsZero() && newBalance.IsZero() {
+		oldCount, _ := k.TokensCount.Get(ctx, addr.String())
+		newCount := oldCount - 1
+		k.TokensCount.Set(ctx, addr.String(), newCount)
+	}
+}
+
 func (k BaseSendKeeper) SafeTransferTreasury(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error {
 	return k.addCoins(ctx, addr, amt)
 }
@@ -417,12 +424,7 @@ func (k BaseSendKeeper) addCoins(ctx context.Context, addr sdk.AccAddress, amt s
 		}
 
 		k.updateHoldersCount(ctx, balance, newBalance)
-
-		if balance.IsZero() && !newBalance.IsZero() {
-			oldCount, _ := k.TokensCount.Get(ctx, addr.String())
-			newCount := oldCount + 1
-			k.TokensCount.Set(ctx, addr.String(), newCount)
-		}
+		k.updateTokenCount(ctx, balance, newBalance, addr)
 	}
 
 	// emit coin received event

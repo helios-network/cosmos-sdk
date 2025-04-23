@@ -62,6 +62,10 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 
 	balances := []sdk.Coin{}
 
+	if req.Pagination.CountTotal { // always force to false (we don't need to count total)
+		req.Pagination.CountTotal = false
+	}
+
 	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
 		ctx,
 		addr,
@@ -88,6 +92,9 @@ func (k BaseKeeper) AllBalances(ctx context.Context, req *types.QueryAllBalances
 		return nil, status.Errorf(codes.InvalidArgument, "paginate: %v", err)
 	}
 
+	totalCount, _ := k.BaseViewKeeper.TokensCount.Get(ctx, req.Address)
+	pageRes.Total = totalCount
+
 	return &types.QueryAllBalancesResponse{Balances: balances, Pagination: pageRes}, nil
 }
 
@@ -104,6 +111,10 @@ func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	balances := []*types.TokenBalanceWithFullMetadata{}
+
+	if req.Pagination.CountTotal { // always force to false (we don't need to count total)
+		req.Pagination.CountTotal = false
+	}
 
 	pageRes, err := k.BaseViewKeeper.iterateBalancesByHoldersCountForAddress(
 		ctx,
@@ -130,8 +141,9 @@ func (k BaseKeeper) AllBalancesWithFullMetadata(ctx context.Context, req *types.
 	}
 
 	totalCount, _ := k.BaseViewKeeper.TokensCount.Get(ctx, req.Address)
+	pageRes.Total = totalCount
 
-	return &types.QueryAllBalancesWithFullMetadataResponse{Balances: balances, Pagination: pageRes, TotalCount: totalCount}, nil
+	return &types.QueryAllBalancesWithFullMetadataResponse{Balances: balances, Pagination: pageRes}, nil
 }
 
 // SpendableBalances implements a gRPC query handler for retrieving an account's
