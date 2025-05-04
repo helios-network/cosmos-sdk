@@ -94,11 +94,11 @@ message DenomUnit {
 }
 
 message ChainMetadata {
-  uint64 chain_id = 1 [(gogoproto.jsontag) = "chainId"];
-  string symbol = 2;
-  uint32 decimals = 3;
+  uint64 chain_id         = 1 [(gogoproto.jsontag) = "chainId"];
+  string symbol           = 2;
+  uint32 decimals         = 3;
   string contract_address = 4 [(gogoproto.jsontag) = "contractAddress"];
-  bool is_originated = 5 [(gogoproto.jsontag) = "isOriginated"];
+  bool   is_originated    = 5 [(gogoproto.jsontag) = "isOriginated"];
 }
 
 // Metadata represents a struct that describes
@@ -151,9 +151,9 @@ message Metadata {
 }
 
 message FullMetadata {
-  Metadata metadata = 1;
-  uint64 holders_count = 2 [(gogoproto.jsontag) = "holdersCount"];
-  string total_supply = 3 [
+  Metadata metadata      = 1;
+  uint64   holders_count = 2 [(gogoproto.jsontag) = "holdersCount"];
+  string   total_supply  = 3 [
     (cosmos_proto.scalar)  = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable)   = false,
@@ -163,7 +163,7 @@ message FullMetadata {
 
 message TokenBalanceWithFullMetadata {
   FullMetadata full_metadata = 1 [(gogoproto.jsontag) = "fullMetadata"];
-  string balance = 2 [
+  string       balance       = 2 [
     (cosmos_proto.scalar)  = "cosmos.Int",
     (gogoproto.customtype) = "cosmossdk.io/math.Int",
     (gogoproto.nullable)   = false,
