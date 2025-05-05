@@ -13,6 +13,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	slashingkeeper "github.com/cosmos/cosmos-sdk/x/slashing/keeper"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -29,6 +30,7 @@ type Keeper struct {
 	authKeeper            types.AccountKeeper
 	bankKeeper            types.BankKeeper
 	erc20Keeper           types.Erc20Keeper
+	getSlashingKeeper     func() *slashingkeeper.Keeper
 	hooks                 types.StakingHooks
 	authority             string
 	validatorAddressCodec addresscodec.Codec
@@ -74,6 +76,7 @@ func NewKeeper(
 		authority:             authority,
 		validatorAddressCodec: validatorAddressCodec,
 		consensusAddressCodec: consensusAddressCodec,
+		getSlashingKeeper:     nil,
 	}
 }
 
@@ -178,4 +181,10 @@ func (k Keeper) GetValidatorUpdates(ctx context.Context) ([]abci.ValidatorUpdate
 
 func (k *Keeper) SetErc20Keeper(erc20Keeper types.Erc20Keeper) {
 	k.erc20Keeper = erc20Keeper
+}
+
+func (k *Keeper) SetSlashingKeeper(slk *slashingkeeper.Keeper) {
+	k.getSlashingKeeper = func() *slashingkeeper.Keeper {
+		return slk
+	}
 }

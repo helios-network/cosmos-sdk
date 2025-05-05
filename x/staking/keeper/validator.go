@@ -644,3 +644,57 @@ func (k Keeper) GetPubKeyByConsAddr(ctx context.Context, addr sdk.ConsAddress) (
 
 	return pubkey, nil
 }
+
+// GetValidatorAssetWeightsFromDelegations calculates the total asset weights for a validator
+// based on all delegations to that validator
+func (k Keeper) GetValidatorAssetWeightsFromDelegations(ctx context.Context, validator types.Validator) ([]types.AssetWeight, error) {
+	valAddrStr := validator.GetOperator()
+	valAddr, err := k.ValidatorAddressCodec().StringToBytes(valAddrStr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get all delegations for this validator
+	delegations, err := k.GetValidatorDelegations(ctx, valAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Aggregate all asset weights from delegations
+	assetMap := make(map[string]math.Int)
+	weightedAssetMap := make(map[string]math.Int)
+
+	// Sum all delegated asset weights, keeping original denoms
+	for _, delegation := range delegations {
+		for _, aw := range delegation.AssetWeights {
+			// Use the actual denom from asset weight, not converting to bondDenom
+			if existing, ok := assetMap[aw.Denom]; ok {
+				assetMap[aw.Denom] = existing.Add(aw.BaseAmount)
+			} else {
+				assetMap[aw.Denom] = aw.BaseAmount
+			}
+
+			// Store the weighted amount as well
+			if existingWeighted, ok := weightedAssetMap[aw.Denom]; ok {
+				weightedAssetMap[aw.Denom] = existingWeighted.Add(aw.WeightedAmount)
+			} else {
+				weightedAssetMap[aw.Denom] = aw.WeightedAmount
+			}
+		}
+	}
+
+	// Convert to AssetWeight format for the validator
+	var totalAssetWeights []types.AssetWeight
+	for denom, baseAmount := range assetMap {
+		// Get the corresponding weighted amount
+		weightedAmount := weightedAssetMap[denom]
+
+		totalAssetWeights = append(totalAssetWeights, types.AssetWeight{
+			Denom:          denom,          // Keep the original denom (ueth, ahelios, etc.)
+			BaseAmount:     baseAmount,     // Original amount of the asset
+			WeightedAmount: weightedAmount, // Actual weighted amount
+		})
+	}
+
+	return totalAssetWeights, nil
+}

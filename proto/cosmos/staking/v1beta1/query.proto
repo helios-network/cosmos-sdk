@@ -190,6 +190,101 @@ service Query {
     option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/{validator_addr}/total_boost";
   }
+
+  rpc BlockSignatures(QueryBlockSignaturesRequest) returns (QueryBlockSignaturesResponse) {
+    option (google.api.http).get = "/cosmos/staking/v1beta1/block_signatures/{height}";
+  }
+
+  // EpochComplete queries complete epoch information including all validators details
+  rpc EpochComplete(QueryEpochCompleteRequest) returns (QueryEpochCompleteResponse) {
+    option (google.api.http).get                 = "/cosmos/staking/v1beta1/epoch/{epoch_id}";
+    option (google.api.http).additional_bindings = {
+      get: "/cosmos/staking/v1beta1/epoch/{block_height}"
+    };
+  }
+}
+
+// Consolidated Epoch Request and Response
+message QueryEpochCompleteRequest {
+  // Can pass either epoch_id directly or block_height to calculate epoch_id
+  uint64 epoch_id     = 1;
+  int64  block_height = 2;
+}
+
+message EpochValidatorSignature {
+  bool  signature = 1;
+  int64 height    = 2;
+}
+
+message EpochValidatorDetail {
+  string                           validator_address = 1;
+  string                           operator_address  = 2;
+  repeated EpochValidatorSignature blocks_signed     = 3;
+  repeated int64                   blocks_missed     = 4;
+  string                           bonded_tokens     = 5 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = false
+  ];
+  string               status                    = 6; // BONDED, UNBONDED, SLASHED
+  bool                 is_slashed                = 7;
+  bool                 is_jailed                 = 8;
+  repeated AssetWeight asset_weights             = 9;
+  int64                missed_block_count        = 10;
+  string               signing_info_start_height = 11;
+  string               commission_rate           = 12;
+  // Voting power for this validator
+  string voting_power = 13 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = false
+  ];
+}
+
+message QueryEpochCompleteResponse {
+  uint64                        epoch                   = 1;
+  uint64                        epoch_length            = 2;
+  int64                         start_height            = 3;
+  int64                         end_height              = 4;
+  int64                         current_height          = 5;
+  int64                         blocks_validated        = 6;
+  int64                         blocks_remaining        = 7;
+  int64                         blocks_until_next_epoch = 8;
+  repeated EpochValidatorDetail validators              = 9;
+  string                        total_tokens            = 10 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = false
+  ];
+  string total_voting_power = 11 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = false
+  ];
+}
+
+message QueryBlockSignaturesRequest {
+  int64 height = 1;
+}
+
+message ValidatorSigningStatus {
+  string address                          = 1;
+  bool signed                             = 2;
+  int64                index_offset       = 3;
+  string               total_tokens       = 4;
+  repeated AssetWeight asset_weights      = 5;
+  int64                epoch_number       = 6;
+  string               status             = 7;
+  bool                 jailed             = 8;
+  int64                missed_block_count = 9;
+}
+
+message QueryBlockSignaturesResponse {
+  repeated ValidatorSigningStatus signatures             = 1;
+  int64                           current_epoch          = 2;
+  int64                           epoch_blocks_validated = 3;
+  int64                           epoch_blocks_remaining = 4;
+  int64                           block_height           = 5;
 }
 
 // QueryValidatorsRequest is request type for Query/Validators RPC method.

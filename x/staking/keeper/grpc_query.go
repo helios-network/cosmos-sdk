@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/codes"
@@ -1046,5 +1047,328 @@ func (k Keeper) GetCurrentEpochHandler(ctx context.Context, req *types.QueryCurr
 		LastEpochHeight:    lastEpochHeight,
 		ValidatorsPerEpoch: validatorsPerEpoch,
 		EpochEnabled:       epochEnabled,
+	}, nil
+}
+
+func (k Querier) BlockSignatures(ctx context.Context, req *types.QueryBlockSignaturesRequest) (*types.QueryBlockSignaturesResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+	if req.Height <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "invalid block height")
+	}
+
+	// Get historical information
+	hist, err := k.GetHistoricalInfo(ctx, req.Height)
+	if err != nil {
+		return nil, status.Errorf(
+			codes.NotFound,
+			"no historical info found at height %d",
+			req.Height,
+		)
+	}
+
+	// Use historical context for the requested height
+	historicalCtx := sdk.UnwrapSDKContext(ctx).WithBlockHeight(req.Height)
+
+	// Access getSlashingKeeper through the embedded *Keeper
+	if k.Keeper == nil {
+		return nil, status.Error(codes.Internal, "keeper is nil")
+	}
+	slashingKeeper := k.Keeper.getSlashingKeeper()
+	if slashingKeeper == nil {
+		return nil, status.Error(codes.Internal, "slashing keeper not set")
+	}
+
+	// Get signing window parameter at historical height
+	params, err := slashingKeeper.GetParams(historicalCtx)
+	if err != nil {
+		return nil, err
+	}
+	signingWindow := params.SignedBlocksWindow
+
+	// Calculate epoch information
+	epochLength := k.GetEpochLength(historicalCtx)
+	var currentEpoch uint64
+	var blocksValidated, blocksRemaining int64
+
+	if epochLength > 0 {
+		currentEpoch = uint64(req.Height) / epochLength
+		epochStart := int64(currentEpoch * epochLength)
+		blocksValidated = req.Height - epochStart
+		blocksRemaining = int64(epochLength) - (req.Height % int64(epochLength))
+	}
+
+	// Process each validator
+	var signatures []*types.ValidatorSigningStatus
+	for _, val := range hist.Valset {
+		consAddrBz, err := val.GetConsAddr()
+		if err != nil {
+			signatures = append(signatures, &types.ValidatorSigningStatus{
+				Address:          "",
+				Signed:           false,
+				IndexOffset:      0,
+				TotalTokens:      "0",
+				AssetWeights:     nil,
+				EpochNumber:      int64(currentEpoch),
+				Status:           "UNKNOWN",
+				Jailed:           false,
+				MissedBlockCount: 0,
+			})
+			continue
+		}
+
+		if err != nil {
+			signatures = append(signatures, &types.ValidatorSigningStatus{
+				Address:          "",
+				Signed:           false,
+				IndexOffset:      0,
+				TotalTokens:      "0",
+				AssetWeights:     nil,
+				EpochNumber:      int64(currentEpoch),
+				Status:           "UNKNOWN",
+				Jailed:           false,
+				MissedBlockCount: 0,
+			})
+			continue
+		}
+
+		// Get validator signing info at historical height
+		info, err := slashingKeeper.GetValidatorSigningInfo(historicalCtx, consAddrBz)
+		if err != nil {
+			signatures = append(signatures, &types.ValidatorSigningStatus{
+				Address:          val.OperatorAddress,
+				Signed:           false,
+				IndexOffset:      0,
+				TotalTokens:      val.Tokens.String(),
+				AssetWeights:     convertAssetWeights(val.TotalAssetWeights),
+				EpochNumber:      int64(currentEpoch),
+				Status:           val.Status.String(), // Use historical status
+				Jailed:           val.Jailed,          // Use historical jailed status
+				MissedBlockCount: 0,
+			})
+			continue
+		}
+
+		// Check if the validator missed this specific block
+		index := req.Height % signingWindow
+		missed, err := slashingKeeper.GetMissedBlockBitmapValue(historicalCtx, consAddrBz, index)
+		if err != nil {
+			missed = true // Default to missed if we can't retrieve the value
+		}
+
+		// Get missed block count at historical height
+		missedBlockCount := info.MissedBlocksCounter
+
+		signatures = append(signatures, &types.ValidatorSigningStatus{
+			Address:          val.OperatorAddress,
+			Signed:           !missed,
+			IndexOffset:      info.IndexOffset,
+			TotalTokens:      val.Tokens.String(),
+			AssetWeights:     convertAssetWeights(val.TotalAssetWeights),
+			EpochNumber:      int64(currentEpoch),
+			Status:           val.Status.String(), // Use historical status from val
+			Jailed:           val.Jailed,          // Use historical jailed from val
+			MissedBlockCount: missedBlockCount,
+		})
+	}
+
+	return &types.QueryBlockSignaturesResponse{
+		Signatures:           signatures,
+		CurrentEpoch:         int64(currentEpoch),
+		EpochBlocksValidated: blocksValidated,
+		EpochBlocksRemaining: blocksRemaining,
+		BlockHeight:          req.Height,
+	}, nil
+}
+
+// Helper function to convert AssetWeight slice
+func convertAssetWeights(assetWeights []types.AssetWeight) []*types.AssetWeight {
+	if assetWeights == nil {
+		return nil
+	}
+	result := make([]*types.AssetWeight, len(assetWeights))
+	for i, aw := range assetWeights {
+		result[i] = &types.AssetWeight{
+			Denom:          aw.Denom,          // Keep as string
+			BaseAmount:     aw.BaseAmount,     // Keep as math.Int
+			WeightedAmount: aw.WeightedAmount, // Keep as math.Int
+		}
+	}
+	return result
+}
+
+// EpochComplete returns complete information about a specific epoch with all validators details
+func (k Querier) EpochComplete(ctx context.Context, req *types.QueryEpochCompleteRequest) (*types.QueryEpochCompleteResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := sdkCtx.BlockHeight()
+	epochLength := k.GetEpochLength(sdkCtx)
+
+	var targetEpoch uint64 = req.EpochId
+	// Calculate epoch boundaries
+	startHeight := int64(targetEpoch * epochLength)
+	endHeight := startHeight + int64(epochLength) - 1
+
+	// Create historical context for the epoch start
+	historicalCtx := sdkCtx.WithBlockHeight(startHeight)
+
+	// Calculate progress in current epoch
+	blocksValidated := int64(0)
+	blocksRemaining := int64(epochLength)
+	if currentHeight >= startHeight && currentHeight <= endHeight {
+		blocksValidated = currentHeight - startHeight + 1
+		blocksRemaining = endHeight - currentHeight
+	} else if currentHeight > endHeight {
+		blocksValidated = int64(epochLength)
+		blocksRemaining = 0
+	}
+
+	// Calculate blocks until next epoch
+	currentEpoch := uint64(currentHeight) / epochLength
+	blocksUntilNext := int64(0)
+	if currentEpoch >= targetEpoch {
+		nextEpochStart := int64((currentEpoch + 1) * epochLength)
+		blocksUntilNext = nextEpochStart - currentHeight
+	}
+
+	slashingKeeper := k.Keeper.getSlashingKeeper()
+	if slashingKeeper == nil {
+		return nil, status.Error(codes.Internal, "slashing keeper not set")
+	}
+
+	// Get validators using historical data for the target epoch
+	hist, err := k.GetHistoricalInfo(ctx, startHeight)
+	if err != nil {
+		// If no historical info at exact start, try to find the nearest one within epoch
+		found := false
+		for i := startHeight + 1; i <= endHeight && i <= currentHeight; i++ {
+			hist, err = k.GetHistoricalInfo(ctx, i)
+			if err == nil {
+				// Update startHeight to match found historical data
+				startHeight = i
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return nil, status.Errorf(codes.NotFound, "no historical info for epoch %d", targetEpoch)
+		}
+	}
+
+	validators := hist.Valset
+
+	var validatorDetails []*types.EpochValidatorDetail
+	totalTokens := math.ZeroInt()
+	totalVotingPower := math.ZeroInt()
+
+	for _, val := range validators {
+		consAddrBz, err := val.GetConsAddr()
+		if err != nil {
+			continue
+		}
+
+		consAddr, err := k.ConsensusAddressCodec().BytesToString(consAddrBz)
+		if err != nil {
+			continue
+		}
+
+		operatorAddr := val.OperatorAddress
+
+		// Get signing information from slashing keeper using historical context
+		missedBlockCount := int64(0)
+		startHeightStr := "0"
+
+		// Historical signing info might not be available for all heights
+		// We use what's available but don't error if missing
+		info, err := slashingKeeper.GetValidatorSigningInfo(historicalCtx, consAddrBz)
+		if err == nil {
+			missedBlockCount = info.MissedBlocksCounter
+			startHeightStr = strconv.FormatInt(info.StartHeight, 10)
+		}
+
+		// Get signing window parameter from historical context
+		signingWindow := int64(100) // Default value
+		params, err := slashingKeeper.GetParams(historicalCtx)
+		if err == nil {
+			signingWindow = params.SignedBlocksWindow
+		}
+
+		// Collect signing history for this epoch
+		var blocksSigned []*types.EpochValidatorSignature
+		var blocksMissed []int64
+
+		// Scan through the epoch to get signing history - only for heights we have data for
+		maxHeight := endHeight
+		if currentHeight < endHeight {
+			maxHeight = currentHeight
+		}
+
+		for h := startHeight; h <= maxHeight; h++ {
+			// Create context for each specific block height
+			blockCtx := sdkCtx.WithBlockHeight(h)
+
+			index := h % signingWindow
+			missed, err := slashingKeeper.GetMissedBlockBitmapValue(blockCtx, consAddrBz, index)
+			if err != nil {
+				// If we can't get the data, we don't include it
+				continue
+			}
+
+			if missed {
+				blocksMissed = append(blocksMissed, h)
+			} else {
+				blocksSigned = append(blocksSigned, &types.EpochValidatorSignature{
+					Signature: true,
+					Height:    h,
+				})
+			}
+		}
+
+		// Use the validator status from the historical data
+		status := val.Status.String()
+		isSlashed := val.Jailed
+		isJailed := val.Jailed
+		commissionRate := val.Commission.Rate.String()
+
+		// Calculate voting power using historical data
+		votingPower := val.Tokens
+
+		totalTokens = totalTokens.Add(val.Tokens)
+		totalVotingPower = totalVotingPower.Add(votingPower)
+
+		validatorDetails = append(validatorDetails, &types.EpochValidatorDetail{
+			ValidatorAddress:       consAddr,
+			OperatorAddress:        operatorAddr,
+			BlocksSigned:           blocksSigned,
+			BlocksMissed:           blocksMissed,
+			BondedTokens:           val.Tokens,
+			Status:                 status,
+			IsSlashed:              isSlashed,
+			IsJailed:               isJailed,
+			AssetWeights:           convertAssetWeights(val.TotalAssetWeights),
+			MissedBlockCount:       missedBlockCount,
+			SigningInfoStartHeight: startHeightStr,
+			CommissionRate:         commissionRate,
+			VotingPower:            votingPower,
+		})
+	}
+
+	return &types.QueryEpochCompleteResponse{
+		Epoch:                targetEpoch,
+		EpochLength:          epochLength,
+		StartHeight:          startHeight,
+		EndHeight:            endHeight,
+		CurrentHeight:        currentHeight,
+		BlocksValidated:      blocksValidated,
+		BlocksRemaining:      blocksRemaining,
+		BlocksUntilNextEpoch: blocksUntilNext,
+		Validators:           validatorDetails,
+		TotalTokens:          totalTokens,
+		TotalVotingPower:     totalVotingPower,
 	}, nil
 }

@@ -122,6 +122,17 @@ func (k Keeper) TrackHistoricalInfo(ctx context.Context) error {
 		return err
 	}
 
+	// Calculate asset weights for each validator
+	for i, val := range lastVals {
+		totalAssetWeights, err := k.GetValidatorAssetWeightsFromDelegations(ctx, val)
+		if err != nil {
+			continue
+		}
+		// Update the validator with its asset weights
+		val.TotalAssetWeights = totalAssetWeights
+		lastVals[i] = val
+	}
+
 	historicalEntry := types.NewHistoricalInfo(sdkCtx.BlockHeader(), types.Validators{Validators: lastVals, ValidatorCodec: k.validatorAddressCodec}, k.PowerReduction(ctx))
 
 	// Set latest HistoricalInfo at current height
