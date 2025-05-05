@@ -275,7 +275,7 @@ func ParseDelegationsByValKey(bz []byte) (sdk.ValAddress, sdk.AccAddress, error)
 }
 
 func GetDelegationsBoostKey(delAddr sdk.AccAddress) []byte {
-	return append(DelegationKey, address.MustLengthPrefix(delAddr)...)
+	return append(DelegationBoostKey, address.MustLengthPrefix(delAddr)...)
 }
 
 // GetDelegationsKey creates the prefix for a delegator for all validators
