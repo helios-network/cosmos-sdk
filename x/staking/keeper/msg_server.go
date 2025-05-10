@@ -120,6 +120,8 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 
 	validator.MinSelfDelegation = msg.MinSelfDelegation
 
+	validator.DelegateAuthorization = msg.DelegateAuthorization
+
 	err = k.SetValidator(ctx, validator)
 	if err != nil {
 		return nil, err
