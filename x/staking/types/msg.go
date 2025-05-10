@@ -36,12 +36,13 @@ func NewMsgCreateValidator(
 		}
 	}
 	return &MsgCreateValidator{
-		Description:       description,
-		ValidatorAddress:  valAddr,
-		Pubkey:            pkAny,
-		Value:             selfDelegation,
-		Commission:        commission,
-		MinSelfDelegation: minSelfDelegation,
+		Description:           description,
+		ValidatorAddress:      valAddr,
+		Pubkey:                pkAny,
+		Value:                 selfDelegation,
+		Commission:            commission,
+		MinSelfDelegation:     minSelfDelegation,
+		DelegateAuthorization: true, // Set to true by default
 	}, nil
 }
 
