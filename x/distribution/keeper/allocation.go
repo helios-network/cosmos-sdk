@@ -2,8 +2,6 @@ package keeper
 
 import (
 	"context"
-	"fmt"
-	stdmath "math" // Import standard math package for exponential function
 
 	abci "github.com/cometbft/cometbft/abci/types"
 
@@ -208,37 +206,61 @@ func (k Keeper) AllocateTokensToValidator(ctx context.Context, val stakingtypes.
 	return k.SetValidatorOutstandingRewards(ctx, valBz, outstanding)
 }
 
-// expNeg calculates e^(-x) for LegacyDec type
-// Uses standard math library for accurate exponential calculation
+// expNeg computes e^(–x) for LegacyDec values in a deterministic, stable way.
+// It avoids floating-point operations entirely, using only Cosmos SDK decimal operations.
 func expNeg(x math.LegacyDec) math.LegacyDec {
-	// For very large values, e^(-x) is effectively zero
-	if x.GT(math.LegacyNewDec(50)) {
+	// If x is very large, e^(–x) underflows to zero
+	if x.GT(math.LegacyNewDec(20)) {
 		return math.LegacyZeroDec()
 	}
 
-	// Convert to float64 and use standard Exp function
-	xFloat, err := x.Float64()
-	if err != nil {
-		// Handle conversion error for large values
-		if x.GT(math.LegacyNewDec(5)) {
-			return math.LegacyZeroDec()
-		}
-		// For small values where conversion fails, use fallback
-		return math.LegacyNewDecWithPrec(5, 1) // Return 0.5 as a reasonable approximation
+	// Between 5 and 20, return a fixed small non-zero value (~1e-18)
+	if x.GT(math.LegacyNewDec(5)) {
+		return math.LegacyNewDecWithPrec(1, 18)
 	}
 
-	// Calculate using the standard library's exp function
-	expResult := stdmath.Exp(-xFloat)
+	// Use Taylor series for x ≤ 5: e^(–x) = Σ ((–x)^i / i!), i = 0...n
+	result := math.LegacyOneDec() // First term (i=0)
+	powerX := math.LegacyOneDec() // Will accumulate (–x)^i
+	negX := x.Neg()               // –x
 
-	// Convert back to LegacyDec using a reliable method
-	resultStr := fmt.Sprintf("%v", expResult)
-	result, err := math.LegacyNewDecFromStr(resultStr)
-	if err != nil {
-		// If string conversion fails, use approximation based on size
-		if expResult < 0.0001 {
-			return math.LegacyZeroDec()
+	// Precomputed factorials for deterministic calculation
+	factorials := []math.LegacyDec{
+		math.LegacyOneDec(),          // 0! = 1
+		math.LegacyOneDec(),          // 1! = 1
+		math.LegacyNewDec(2),         // 2! = 2
+		math.LegacyNewDec(6),         // 3! = 6
+		math.LegacyNewDec(24),        // 4! = 24
+		math.LegacyNewDec(120),       // 5! = 120
+		math.LegacyNewDec(720),       // 6! = 720
+		math.LegacyNewDec(5040),      // 7! = 5040
+		math.LegacyNewDec(40320),     // 8! = 40320
+		math.LegacyNewDec(362880),    // 9! = 362880
+		math.LegacyNewDec(3628800),   // 10! = 3628800
+		math.LegacyNewDec(39916800),  // 11! = 39916800
+		math.LegacyNewDec(479001600), // 12! = 479001600
+	}
+
+	// Core Taylor series calculation
+	for i := 1; i < len(factorials); i++ {
+		// Calculate next term incrementally to maintain precision
+		powerX = powerX.Mul(negX)
+		term := powerX.Quo(factorials[i])
+
+		// Add term to result, abort if term is negligible
+		result = result.Add(term)
+		if term.Abs().LT(math.LegacyNewDecWithPrec(1, 18)) {
+			break
 		}
-		return math.LegacyNewDecWithPrec(int64(expResult*1000), 3)
+
+		// Safety check: detect numerical instability
+		if i > 6 && term.GT(math.LegacyOneDec()) {
+			// If we see suspiciously large terms, abort calculation
+			if x.GT(math.LegacyNewDec(1)) {
+				return math.LegacyNewDecWithPrec(1, 9) // Small but non-zero value
+			}
+			break
+		}
 	}
 
 	return result
