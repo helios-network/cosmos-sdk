@@ -37,13 +37,10 @@ func (k Keeper) GetDelegationBoost(ctx context.Context, delAddr sdk.AccAddress, 
 // GetTotalBoostedDelegation calculates the total boost amount for a given validator.
 // It iterates over all boost index keys for the validator (set via SetDelegationBoost)
 // and sums the boost amounts from each boost record.
-func (k Keeper) GetTotalBoostedDelegation(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error) {
-	// Initialize the total boost as zero (in decimal form)
+func (k *Keeper) GetTotalBoostedDelegation(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error) {
 	totalBoosted := math.LegacyZeroDec()
 
-	// Open the KVStore
 	store := k.storeService.OpenKVStore(ctx)
-	// Use the boost index prefix for the validator
 	prefix := types.GetDelegationsBoostByValPrefixKey(val)
 	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
 	if err != nil {
@@ -51,23 +48,25 @@ func (k Keeper) GetTotalBoostedDelegation(ctx context.Context, val sdk.ValAddres
 	}
 	defer iterator.Close()
 
-	// Iterate over all keys in the boost index for the given validator
 	for ; iterator.Valid(); iterator.Next() {
-		// Extract the delegator address bytes from the key.
-		// The key is constructed as: GetDelegationsBoostByValPrefixKey(val) || delegatorAddress bytes.
 		delegatorBytes := iterator.Key()[len(prefix):]
-		delegatorAddr := sdk.AccAddress(delegatorBytes)
 
-		// Retrieve the boost record for this (delegator, validator) pair.
-		boostRecord, err := k.GetDelegationBoost(ctx, delegatorAddr, val)
-		if err != nil {
-			// If no boost record exists, skip this entry.
+		if len(delegatorBytes) == 0 {
+			k.Logger(ctx).Error("Invalid delegator address in boost index key")
 			continue
 		}
 
-		// Convert the boost amount (math.Int) to a decimal.
+		delegatorAddr := sdk.AccAddress(delegatorBytes)
+
+		boostRecord, err := k.GetDelegationBoost(ctx, delegatorAddr, val)
+		if err != nil {
+			if !errors.Is(err, types.ErrNoDelegation) {
+				k.Logger(ctx).Error("Error retrieving delegation boost", "error", err)
+			}
+			continue
+		}
+
 		boostDec := math.LegacyNewDecFromInt(boostRecord.Amount)
-		// Add the boost amount to the total.
 		totalBoosted = totalBoosted.Add(boostDec)
 	}
 
@@ -1059,7 +1058,7 @@ func (k Keeper) UnDelegateBoost(
 
 	// get delegation boost
 	delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
-	if err == nil {
+	if err != nil {
 		return time.Time{}, math.ZeroInt(), fmt.Errorf("failed to undelegate boost: %w", err)
 
 	}
@@ -1072,7 +1071,7 @@ func (k Keeper) UnDelegateBoost(
 	}
 
 	if delegationBoost.Amount.LT(bondAmt) {
-		return time.Time{}, math.ZeroInt(), fmt.Errorf("insufficient boost delegation: minimum required is %s", validator.MinDelegation)
+		return time.Time{}, math.ZeroInt(), fmt.Errorf("insufficient boost delegation: available balance is %s, requested to undelegate %s", delegationBoost.Amount, bondAmt)
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)

@@ -444,21 +444,8 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
-	// if denom is erc20 get the real weighted amount
-	asset, err := k.ConvertAssetToSDKCoin(sdkCtx, msg.Amount.Denom, msg.Amount.Amount)
-	if err != nil {
-		return nil, err
-	}
-
-	shares, err := k.ValidateUnbondAmount(
-		ctx, delegatorAddress, addr, asset.Amount,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	undelegatedAmt := math.ZeroInt()
-	completionTime := time.Time{}
+	var undelegatedAmt math.Int
+	var completionTime time.Time
 
 	if msg.Amount.Denom == bondDenom {
 		completionTime, undelegatedAmt, err = k.Keeper.UnDelegateBoost(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, validator)
@@ -466,6 +453,19 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 			return nil, err
 		}
 	} else {
+
+		// if denom is erc20 get the real weighted amount
+		asset, err := k.ConvertAssetToSDKCoin(sdkCtx, msg.Amount.Denom, msg.Amount.Amount)
+		if err != nil {
+			return nil, err
+		}
+
+		shares, err := k.ValidateUnbondAmount(
+			ctx, delegatorAddress, addr, asset.Amount,
+		)
+		if err != nil {
+			return nil, err
+		}
 		completionTime, undelegatedAmt, err = k.Keeper.Undelegate(ctx, delegatorAddress, addr, shares, msg.Amount.Denom, msg.Amount.Amount)
 		if err != nil {
 			return nil, err
