@@ -34,6 +34,27 @@ func (k Keeper) GetTotalBoostedDelegation(ctx context.Context, delAddr sdk.AccAd
 	return types.UnmarshalDelegationBoost(k.cdc, value)
 }
 
+func (k Keeper) GetTotalBoostedDelegations(ctx context.Context, delAddr sdk.AccAddress) ([]string, error) {
+	store := k.storeService.OpenKVStore(ctx)
+	prefix := types.GetDelegationsBoostKey(delAddr)
+	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+
+	delegationBoosts := make([]string, 0)
+
+	for ; iterator.Valid(); iterator.Next() {
+		delegationBoost, err := types.UnmarshalDelegationBoost(k.cdc, iterator.Value())
+		if err != nil {
+			return nil, err
+		}
+		delegationBoosts = append(delegationBoosts, delegationBoost.Amount.String())
+	}
+	return delegationBoosts, nil
+}
+
 // GetTotalBoostedValidator calculates the total boost amount for a given validator.
 // It iterates over all boost index keys for the validator (set via SetDelegationBoost)
 // and sums the boost amounts from each boost record.
@@ -1060,7 +1081,6 @@ func (k Keeper) UnDelegateBoost(
 	delegationBoost, err := k.GetTotalBoostedDelegation(ctx, delAddr, valbz)
 	if err != nil {
 		return time.Time{}, math.ZeroInt(), fmt.Errorf("failed to undelegate boost: %w", err)
-
 	}
 
 	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
