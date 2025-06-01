@@ -188,6 +188,12 @@ service Query {
   // TotalBoostedDelegation queries the total boosted delegation for a given validator.
   rpc TotalBoostedDelegation(QueryTotalBoostedDelegationRequest) returns (QueryTotalBoostedDelegationResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/delegation/{validator_addr}/{delegator_addr}/total_boost";
+  }
+
+  // TotalBoostedValidator queries the total boosted validator for a given validator.
+  rpc TotalBoostedValidator(QueryTotalBoostedValidatorRequest) returns (QueryTotalBoostedValidatorResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
     option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/{validator_addr}/total_boost";
   }
 
@@ -654,6 +660,9 @@ message QueryIsEpochEnabledResponse {
 message QueryTotalBoostedDelegationRequest {
   // validator_addr defines the validator address to query.
   string validator_addr = 1 [(cosmos_proto.scalar) = "cosmos.ValidatorAddressString"];
+
+  // delegator_addr defines the delegator address to query for.
+  string delegator_addr = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
 }
 
 // QueryTotalBoostedDelegationResponse is the response type for the Query/TotalBoostedDelegation RPC method.
@@ -661,3 +670,19 @@ message QueryTotalBoostedDelegationResponse {
   // total_boost defines the total boosted delegation amount for the validator.
   string total_boost = 1;
 }
+
+// QueryTotalBoostedValidatorRequest is the request type for the Query/TotalBoostedValidator RPC method.
+message QueryTotalBoostedValidatorRequest {
+  // validator_addr defines the validator address to query.
+  string validator_addr = 1 [(cosmos_proto.scalar) = "cosmos.ValidatorAddressString"];
+}
+
+// QueryTotalBoostedValidatorResponse is the response type for the Query/TotalBoostedValidator RPC method.
+message QueryTotalBoostedValidatorResponse {
+  // total_boost defines the total boosted validator amount for the validator.
+  string total_boost = 1;
+}
+
+
+
+

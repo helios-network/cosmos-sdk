@@ -441,6 +441,29 @@ func (k Querier) DelegatorValidator(ctx context.Context, req *types.QueryDelegat
 	return &types.QueryDelegatorValidatorResponse{Validator: validator}, nil
 }
 
+func (k Querier) TotalBoostedValidator(ctx context.Context, req *types.QueryTotalBoostedValidatorRequest) (*types.QueryTotalBoostedValidatorResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+	if req.ValidatorAddr == "" {
+		return nil, status.Error(codes.InvalidArgument, "validator address cannot be empty")
+	}
+
+	valAddr, err := k.validatorAddressCodec.StringToBytes(req.ValidatorAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	totalBoost, err := k.GetTotalBoostedValidator(ctx, valAddr)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryTotalBoostedValidatorResponse{
+		TotalBoost: totalBoost.String(),
+	}, nil
+}
+
 func (k Querier) TotalBoostedDelegation(ctx context.Context, req *types.QueryTotalBoostedDelegationRequest) (*types.QueryTotalBoostedDelegationResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -454,7 +477,12 @@ func (k Querier) TotalBoostedDelegation(ctx context.Context, req *types.QueryTot
 		return nil, err
 	}
 
-	totalBoost, err := k.GetTotalBoostedDelegation(ctx, valAddr)
+	delAddr, err := sdk.AccAddressFromBech32(req.DelegatorAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	totalBoost, err := k.GetDelegationBoost(ctx, delAddr, valAddr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

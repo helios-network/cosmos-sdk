@@ -34,10 +34,10 @@ func (k Keeper) GetDelegationBoost(ctx context.Context, delAddr sdk.AccAddress, 
 	return types.UnmarshalDelegationBoost(k.cdc, value)
 }
 
-// GetTotalBoostedDelegation calculates the total boost amount for a given validator.
+// GetTotalBoostedValidator calculates the total boost amount for a given validator.
 // It iterates over all boost index keys for the validator (set via SetDelegationBoost)
 // and sums the boost amounts from each boost record.
-func (k *Keeper) GetTotalBoostedDelegation(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error) {
+func (k *Keeper) GetTotalBoostedValidator(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error) {
 	totalBoosted := math.LegacyZeroDec()
 
 	store := k.storeService.OpenKVStore(ctx)
