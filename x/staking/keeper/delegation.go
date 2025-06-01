@@ -34,7 +34,7 @@ func (k Keeper) GetTotalBoostedDelegation(ctx context.Context, delAddr sdk.AccAd
 	return types.UnmarshalDelegationBoost(k.cdc, value)
 }
 
-func (k Keeper) GetTotalBoostedDelegations(ctx context.Context, delAddr sdk.AccAddress) ([]string, error) {
+func (k Keeper) GetTotalBoostedDelegations(ctx context.Context, delAddr sdk.AccAddress) ([]types.DelegationBoost, error) {
 	store := k.storeService.OpenKVStore(ctx)
 	prefix := types.GetDelegationsBoostKey(delAddr)
 	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
@@ -43,14 +43,14 @@ func (k Keeper) GetTotalBoostedDelegations(ctx context.Context, delAddr sdk.AccA
 	}
 	defer iterator.Close()
 
-	delegationBoosts := make([]string, 0)
+	delegationBoosts := make([]types.DelegationBoost, 0)
 
 	for ; iterator.Valid(); iterator.Next() {
 		delegationBoost, err := types.UnmarshalDelegationBoost(k.cdc, iterator.Value())
 		if err != nil {
 			return nil, err
 		}
-		delegationBoosts = append(delegationBoosts, delegationBoost.Amount.String())
+		delegationBoosts = append(delegationBoosts, delegationBoost)
 	}
 	return delegationBoosts, nil
 }
