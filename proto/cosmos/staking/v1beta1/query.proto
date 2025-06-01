@@ -693,7 +693,7 @@ message QueryTotalBoostedDelegationsRequest {
 }
 
 message QueryTotalBoostedDelegationsResponse {
-  repeated string delegation_boosts = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  repeated DelegationBoost delegation_boosts = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
 
 
