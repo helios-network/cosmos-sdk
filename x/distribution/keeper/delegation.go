@@ -91,7 +91,7 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 	}
 
 	// Retrieve the total boosted delegation for the validator
-	boostedTotal, err := k.stakingKeeper.GetTotalBoostedDelegation(ctx, sdk.ValAddress(valBz))
+	boostedTotal, err := k.stakingKeeper.GetTotalBoostedValidator(ctx, sdk.ValAddress(valBz))
 	if err != nil {
 		return sdk.DecCoins{}, err
 	}

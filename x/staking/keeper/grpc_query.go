@@ -482,7 +482,7 @@ func (k Querier) TotalBoostedDelegation(ctx context.Context, req *types.QueryTot
 		return nil, err
 	}
 
-	totalBoost, err := k.GetDelegationBoost(ctx, delAddr, valAddr)
+	totalBoost, err := k.GetTotalBoostedDelegation(ctx, delAddr, valAddr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}

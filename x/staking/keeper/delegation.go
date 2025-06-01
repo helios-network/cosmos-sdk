@@ -18,7 +18,7 @@ import (
 )
 
 // GetDelegation returns a specific delegation.
-func (k Keeper) GetDelegationBoost(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (types.DelegationBoost, error) {
+func (k Keeper) GetTotalBoostedDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (types.DelegationBoost, error) {
 	store := k.storeService.OpenKVStore(ctx)
 	key := types.GetDelegationBoostKey(delAddr, valAddr)
 
@@ -58,7 +58,7 @@ func (k *Keeper) GetTotalBoostedValidator(ctx context.Context, val sdk.ValAddres
 
 		delegatorAddr := sdk.AccAddress(delegatorBytes)
 
-		boostRecord, err := k.GetDelegationBoost(ctx, delegatorAddr, val)
+		boostRecord, err := k.GetTotalBoostedDelegation(ctx, delegatorAddr, val)
 		if err != nil {
 			if !errors.Is(err, types.ErrNoDelegation) {
 				k.Logger(ctx).Error("Error retrieving delegation boost", "error", err)
@@ -981,7 +981,7 @@ func (k Keeper) DelegateBoost(
 	}
 
 	// get delegation boost
-	delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
+	delegationBoost, err := k.GetTotalBoostedDelegation(ctx, delAddr, valbz)
 	if err != nil {
 		delAddrStr, err1 := k.authKeeper.AddressCodec().BytesToString(delAddr)
 		if err1 != nil {
@@ -1057,7 +1057,7 @@ func (k Keeper) UnDelegateBoost(
 	}
 
 	// get delegation boost
-	delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
+	delegationBoost, err := k.GetTotalBoostedDelegation(ctx, delAddr, valbz)
 	if err != nil {
 		return time.Time{}, math.ZeroInt(), fmt.Errorf("failed to undelegate boost: %w", err)
 
@@ -1122,7 +1122,7 @@ func (k Keeper) Delegate(
 	}
 
 	if validator.MinDelegation.GT(math.NewInt(0)) && !valOperator.Equals(sdk.ValAddress(delAddr)) {
-		delegationBoost, err := k.GetDelegationBoost(ctx, delAddr, valbz)
+		delegationBoost, err := k.GetTotalBoostedDelegation(ctx, delAddr, valbz)
 		if err != nil {
 			return math.LegacyZeroDec(), fmt.Errorf("failed to retrieve delegation boost: %w", err)
 		}
