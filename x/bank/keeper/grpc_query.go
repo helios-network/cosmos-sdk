@@ -317,7 +317,16 @@ func (k BaseKeeper) DenomsFullMetadata(c context.Context, req *types.QueryDenoms
 		req.Pagination,
 		func(key collections.Pair[uint64, string], _ bool) (types.FullMetadata, error) {
 			denom := key.K2()
-			metadata, _ := k.GetDenomMetaData(c, denom)
+			metadata, exists := k.GetDenomMetaData(c, denom)
+			if !exists {
+				return types.FullMetadata{
+					Metadata: &types.Metadata{
+						Base: denom,
+					},
+					TotalSupply:  k.GetSupply(c, denom).Amount,
+					HoldersCount: ^key.K1(),
+				}, nil
+			}
 			holdersCount := ^key.K1()
 
 			return types.FullMetadata{
