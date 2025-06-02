@@ -35,6 +35,8 @@ func ConvertToLegacyProposal(proposal v1.Proposal) (v1beta1.Proposal, error) {
 		if err != nil {
 			return v1beta1.Proposal{}, err
 		}
+	} else {
+		legacyProposal.CurrentTallyResult = legacyProposal.FinalTallyResult
 	}
 
 	if proposal.VotingStartTime != nil {
