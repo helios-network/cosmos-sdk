@@ -1,4 +1,4 @@
-VERSION=${VERSION:-"v0.50.10-helios-98"}
+VERSION=${VERSION:-"v0.50.10-helios-99"}
 
 echo "Deploy Store"
 git tag math/$VERSION
