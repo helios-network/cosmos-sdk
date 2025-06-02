@@ -297,6 +297,18 @@ func (q legacyQueryServer) Proposal(ctx context.Context, req *v1beta1.QueryPropo
 		return nil, err
 	}
 
+	tallyResult, err := q.qs.TallyResult(ctx, &v1.QueryTallyResultRequest{
+		ProposalId: proposal.ProposalId,
+	})
+	if err != nil {
+		return nil, err
+	}
+	tally, err := v3.ConvertToLegacyTallyResult(tallyResult.Tally)
+	if err != nil {
+		return nil, err
+	}
+	proposal.CurrentTallyResult = tally
+
 	return &v1beta1.QueryProposalResponse{Proposal: proposal}, nil
 }
 
@@ -317,6 +329,17 @@ func (q legacyQueryServer) Proposals(ctx context.Context, req *v1beta1.QueryProp
 		if err != nil {
 			return nil, err
 		}
+		tallyResult, err := q.qs.TallyResult(ctx, &v1.QueryTallyResultRequest{
+			ProposalId: proposal.Id,
+		})
+		if err != nil {
+			return nil, err
+		}
+		tally, err := v3.ConvertToLegacyTallyResult(tallyResult.Tally)
+		if err != nil {
+			return nil, err
+		}
+		legacyProposals[idx].CurrentTallyResult = tally
 	}
 
 	return &v1beta1.QueryProposalsResponse{

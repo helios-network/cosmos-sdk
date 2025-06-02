@@ -98,27 +98,29 @@ message Proposal {
   // proposal's voting period has ended.
   TallyResult final_tally_result = 4 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 
+  TallyResult current_tally_result = 5 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
   // submit_time is the time of proposal submission.
-  google.protobuf.Timestamp submit_time = 5
+  google.protobuf.Timestamp submit_time = 6
       [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 
   // deposit_end_time is the end time for deposition.
-  google.protobuf.Timestamp deposit_end_time = 6
+  google.protobuf.Timestamp deposit_end_time = 7
       [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 
   // total_deposit is the total deposit on the proposal.
-  repeated cosmos.base.v1beta1.Coin total_deposit = 7 [
+  repeated cosmos.base.v1beta1.Coin total_deposit = 8 [
     (gogoproto.nullable)     = false,
     (amino.dont_omitempty)   = true,
     (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"
   ];
 
   // voting_start_time is the starting time to vote on a proposal.
-  google.protobuf.Timestamp voting_start_time = 8
+  google.protobuf.Timestamp voting_start_time = 9
       [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 
   // voting_end_time is the end time of voting on a proposal.
-  google.protobuf.Timestamp voting_end_time = 9
+  google.protobuf.Timestamp voting_end_time = 10
       [(gogoproto.stdtime) = true, (gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
 
