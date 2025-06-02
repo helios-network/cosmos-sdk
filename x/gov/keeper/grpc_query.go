@@ -51,6 +51,13 @@ func (q queryServer) Proposal(ctx context.Context, req *v1.QueryProposalRequest)
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	tallyResult, err := q.TallyResult(ctx, &v1.QueryTallyResultRequest{
+		ProposalId: proposal.Id,
+	})
+	if err == nil {
+		proposal.CurrentTallyResult = tallyResult.Tally
+	}
+
 	return &v1.QueryProposalResponse{Proposal: &proposal}, nil
 }
 
@@ -99,6 +106,15 @@ func (q queryServer) Proposals(ctx context.Context, req *v1.QueryProposalsReques
 
 	if err != nil && !errors.IsOf(err, collections.ErrInvalidIterator) {
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	for _, proposal := range filteredProposals {
+		tallyResult, err := q.TallyResult(ctx, &v1.QueryTallyResultRequest{
+			ProposalId: proposal.Id,
+		})
+		if err == nil {
+			proposal.CurrentTallyResult = tallyResult.Tally
+		}
 	}
 
 	return &v1.QueryProposalsResponse{Proposals: filteredProposals, Pagination: pageRes}, nil
@@ -297,16 +313,6 @@ func (q legacyQueryServer) Proposal(ctx context.Context, req *v1beta1.QueryPropo
 		return nil, err
 	}
 
-	tallyResult, err := q.qs.TallyResult(ctx, &v1.QueryTallyResultRequest{
-		ProposalId: proposal.ProposalId,
-	})
-	if err == nil {
-		tally, err := v3.ConvertToLegacyTallyResult(tallyResult.Tally)
-		if err == nil {
-			proposal.CurrentTallyResult = tally
-		}
-	}
-
 	return &v1beta1.QueryProposalResponse{Proposal: proposal}, nil
 }
 
@@ -326,15 +332,6 @@ func (q legacyQueryServer) Proposals(ctx context.Context, req *v1beta1.QueryProp
 		legacyProposals[idx], err = v3.ConvertToLegacyProposal(*proposal)
 		if err != nil {
 			return nil, err
-		}
-		tallyResult, err := q.qs.TallyResult(ctx, &v1.QueryTallyResultRequest{
-			ProposalId: proposal.Id,
-		})
-		if err == nil {
-			tally, err := v3.ConvertToLegacyTallyResult(tallyResult.Tally)
-			if err == nil {
-				legacyProposals[idx].CurrentTallyResult = tally
-			}
 		}
 	}
 

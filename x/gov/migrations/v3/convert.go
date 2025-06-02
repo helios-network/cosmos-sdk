@@ -30,6 +30,13 @@ func ConvertToLegacyProposal(proposal v1.Proposal) (v1beta1.Proposal, error) {
 		return v1beta1.Proposal{}, err
 	}
 
+	if proposal.CurrentTallyResult != nil {
+		legacyProposal.CurrentTallyResult, err = ConvertToLegacyTallyResult(proposal.CurrentTallyResult)
+		if err != nil {
+			return v1beta1.Proposal{}, err
+		}
+	}
+
 	if proposal.VotingStartTime != nil {
 		legacyProposal.VotingStartTime = *proposal.VotingStartTime
 	}
