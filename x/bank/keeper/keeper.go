@@ -38,6 +38,7 @@ type Keeper interface {
 	SetDenomMetaData(ctx context.Context, denomMetaData types.Metadata)
 	GetAllDenomMetaData(ctx context.Context) []types.Metadata
 	IterateAllDenomMetaData(ctx context.Context, cb func(types.Metadata) bool)
+	GetDenomFromChainIdAndContractAddress(ctx context.Context, chainId uint64, contractAddress string) (string, bool)
 
 	SendCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
 	SendCoinsFromModuleToModule(ctx context.Context, senderModule, recipientModule string, amt sdk.Coins) error
@@ -363,6 +364,11 @@ func (k BaseKeeper) setChainMetadataKeyIndex(ctx context.Context, chainMetadata 
 	_ = k.OriginChainIndex.Set(ctx,
 		collections.Join(chainMetadata.ChainId, chainMetadata.ContractAddress),
 		denom)
+}
+
+func (k BaseKeeper) GetDenomFromChainIdAndContractAddress(ctx context.Context, chainId uint64, contractAddress string) (string, bool) {
+	denom, err := k.OriginChainIndex.Get(ctx, collections.Join(chainId, contractAddress))
+	return denom, err == nil
 }
 
 // SendCoinsFromModuleToAccount transfers coins from a ModuleAccount to an AccAddress.

@@ -99,6 +99,12 @@ message ChainMetadata {
   uint32 decimals         = 3;
   string contract_address = 4 [(gogoproto.jsontag) = "contractAddress"];
   bool   is_originated    = 5 [(gogoproto.jsontag) = "isOriginated"];
+  string total_supply     = 6 [
+    (cosmos_proto.scalar)  = "cosmos.Int",
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable)   = true,
+    (amino.dont_omitempty) = true
+  ];
 }
 
 // Metadata represents a struct that describes
