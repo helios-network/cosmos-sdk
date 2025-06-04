@@ -477,13 +477,38 @@ func (k Querier) TotalBoostedValidator(ctx context.Context, req *types.QueryTota
 		return nil, err
 	}
 
+	val, err := k.GetValidator(ctx, valAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	totalStaked := math.LegacyNewDecFromInt(val.GetTokens())
+	if totalStaked.LTE(math.LegacyNewDecFromInt(math.NewInt(0))) {
+		totalStaked = math.LegacyNewDecFromInt(math.NewInt(1))
+	}
+
 	totalBoost, err := k.GetTotalBoostedValidator(ctx, valAddr)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	weightedTotalBoost, err := k.ConvertAssetToSDKCoin(sdkCtx, sdk.DefaultBondDenom, totalBoost.TruncateInt())
+
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	boostRatio := weightedTotalBoost.Amount.ToLegacyDec().Quo(totalStaked)
+	if boostRatio.GT(math.LegacyOneDec()) {
+		boostRatio = math.LegacyOneDec()
+	}
+
+	boostPercentage := boostRatio.Mul(math.LegacyNewDec(100))
+
 	return &types.QueryTotalBoostedValidatorResponse{
-		TotalBoost: totalBoost.String(),
+		TotalBoost:      totalBoost.String(),
+		BoostPercentage: boostPercentage.String(),
 	}, nil
 }
 

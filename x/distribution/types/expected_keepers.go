@@ -61,6 +61,7 @@ type StakingKeeper interface {
 	GetTotalBoostedDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (stakingtypes.DelegationBoost, error)
 	GetTotalBoostedValidator(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error)
 	GetTotalBoostedDelegations(ctx context.Context, delAddr sdk.AccAddress) ([]stakingtypes.DelegationBoost, error)
+	ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math.Int) (sdk.Coin, error)
 }
 
 // StakingHooks event hooks for staking validator object (noalias)

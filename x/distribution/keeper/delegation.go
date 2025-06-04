@@ -91,13 +91,20 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 	}
 
 	// Retrieve the total boosted delegation for the validator
-	boostedTotal, err := k.stakingKeeper.GetTotalBoostedValidator(ctx, sdk.ValAddress(valBz))
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+
+	totalBoost, err := k.stakingKeeper.GetTotalBoostedValidator(ctx, sdk.ValAddress(valBz))
+	if err != nil {
+		return sdk.DecCoins{}, err
+	}
+
+	weightedTotalBoost, err := k.stakingKeeper.ConvertAssetToSDKCoin(sdkCtx, sdk.DefaultBondDenom, totalBoost.TruncateInt())
 	if err != nil {
 		return sdk.DecCoins{}, err
 	}
 
 	// Calculate the boost ratio: proportion of boosted tokens relative to total staked tokens
-	boostRatio := boostedTotal.Quo(totalStaked)
+	boostRatio := weightedTotalBoost.Amount.ToLegacyDec().Quo(totalStaked)
 	if boostRatio.GT(math.LegacyOneDec()) {
 		boostRatio = math.LegacyOneDec() // Clamp to 1 if it exceeds 100%
 	}

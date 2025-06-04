@@ -142,12 +142,36 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 		return nil, err
 	}
 
+	totalAmount := msg.Value.Amount
+	oneHLS := math.NewInt(1000000000000000000)
+	var regularDelegationAmount, boostAmount math.Int
+
+	if totalAmount.GT(oneHLS) {
+		regularDelegationAmount = oneHLS
+		boostAmount = totalAmount.Sub(oneHLS)
+	} else {
+		regularDelegationAmount = totalAmount
+		boostAmount = math.ZeroInt()
+	}
+
 	// move coins from the msg.Address account to a (self-delegation) delegator account
 	// the validator account and global shares are updated within here
 	// NOTE source will always be from a wallet which are unbonded
-	_, err = k.Keeper.Delegate(ctx, sdk.AccAddress(valAddr), msg.Value.Amount, msg.Value.Denom, types.Unbonded, validator, true)
+	_, err = k.Keeper.Delegate(ctx, sdk.AccAddress(valAddr), regularDelegationAmount, msg.Value.Denom, types.Unbonded, validator, true)
 	if err != nil {
 		return nil, err
+	}
+
+	if boostAmount.IsPositive() {
+		validator, err = k.GetValidator(ctx, valAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = k.Keeper.DelegateBoost(ctx, sdk.AccAddress(valAddr), boostAmount, msg.Value.Denom, validator)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	sdkCtx.EventManager().EmitEvents(sdk.Events{

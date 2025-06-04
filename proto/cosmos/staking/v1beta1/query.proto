@@ -188,7 +188,7 @@ service Query {
   // TotalBoostedDelegation queries the total boosted delegation for a given validator.
   rpc TotalBoostedDelegation(QueryTotalBoostedDelegationRequest) returns (QueryTotalBoostedDelegationResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
-    option (google.api.http).get               = "/cosmos/staking/v1beta1/delegation/{validator_addr}/{delegator_addr}/total_boost";
+    option (google.api.http).get = "/cosmos/staking/v1beta1/delegation/{validator_addr}/{delegator_addr}/total_boost";
   }
 
   // TotalBoostedValidator queries the total boosted validator for a given validator.
@@ -685,7 +685,8 @@ message QueryTotalBoostedValidatorRequest {
 // QueryTotalBoostedValidatorResponse is the response type for the Query/TotalBoostedValidator RPC method.
 message QueryTotalBoostedValidatorResponse {
   // total_boost defines the total boosted validator amount for the validator.
-  string total_boost = 1;
+  string total_boost      = 1;
+  string boost_percentage = 2;
 }
 
 message QueryTotalBoostedDelegationsRequest {
@@ -695,5 +696,3 @@ message QueryTotalBoostedDelegationsRequest {
 message QueryTotalBoostedDelegationsResponse {
   repeated DelegationBoost delegation_boosts = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
-
-
