@@ -536,7 +536,7 @@ func (k Querier) TotalBoostedDelegation(ctx context.Context, req *types.QueryTot
 	}
 
 	return &types.QueryTotalBoostedDelegationResponse{
-		TotalBoost: totalBoost.String(),
+		TotalBoost: totalBoost.Amount.String(),
 	}, nil
 }
 
