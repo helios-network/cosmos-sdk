@@ -62,6 +62,7 @@ var (
 
 	DelegationBoostKey = []byte{0x90} // key for a boost delegation
 
+	ValidatorBoostTotalKey = []byte{0xA0} // key for validator boost total
 )
 
 // UnbondingType defines the type of unbonding operation
@@ -446,4 +447,9 @@ func GetHistoricalInfoKey(height int64) []byte {
 	heightBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(heightBytes, uint64(height))
 	return append(HistoricalInfoKey, heightBytes...)
+}
+
+// GetValidatorBoostTotalKey creates the key for storing validator boost total
+func GetValidatorBoostTotalKey(valAddr sdk.ValAddress) []byte {
+	return append(ValidatorBoostTotalKey, address.MustLengthPrefix(valAddr)...)
 }
