@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	BOOST_OPTIMIZATION_ACTIVATION_BLOCK = 82700
+	BOOST_OPTIMIZATION_ACTIVATION_BLOCK = 10
 )
 
 // TODO: REMOVE WHEN MAINNET IS READY
@@ -71,12 +71,12 @@ func (k *Keeper) GetTotalBoostedValidator(ctx context.Context, val sdk.ValAddres
 	if !k.shouldUseOptimizedBoostSystem(ctx) {
 		return k.calculateTotalBoostLegacy(ctx, val)
 	}
-	
+
 	total, err := k.getValidatorBoostTotalFromStore(ctx, val)
 	if err == nil {
 		return total, nil
 	}
-	
+
 	return k.calculateTotalBoostLegacy(ctx, val)
 }
 
@@ -122,22 +122,22 @@ func (k *Keeper) calculateTotalBoostLegacy(ctx context.Context, val sdk.ValAddre
 func (k *Keeper) getValidatorBoostTotalFromStore(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error) {
 	store := k.storeService.OpenKVStore(ctx)
 	key := types.GetValidatorBoostTotalKey(val)
-	
+
 	bz, err := store.Get(key)
 	if err != nil {
 		return math.LegacyZeroDec(), err
 	}
-	
+
 	if bz == nil {
 		return math.LegacyZeroDec(), fmt.Errorf("not found in store")
 	}
-	
+
 	total := math.LegacyDec{}
 	err = total.Unmarshal(bz)
 	if err != nil {
 		return math.LegacyZeroDec(), err
 	}
-	
+
 	return total, nil
 }
 
@@ -145,16 +145,15 @@ func (k *Keeper) getValidatorBoostTotalFromStore(ctx context.Context, val sdk.Va
 func (k *Keeper) setValidatorBoostTotalInStore(ctx context.Context, val sdk.ValAddress, total math.LegacyDec) error {
 	store := k.storeService.OpenKVStore(ctx)
 	key := types.GetValidatorBoostTotalKey(val)
-	
+
 	// Serialize LegacyDec to store
 	bz, err := total.Marshal()
 	if err != nil {
 		return err
 	}
-	
+
 	return store.Set(key, bz)
 }
-
 
 // GetDelegation returns a specific delegation.
 func (k Keeper) GetDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (types.Delegation, error) {
@@ -1057,7 +1056,7 @@ func (k Keeper) SetDelegationBoost(ctx context.Context, delegationBoost types.De
 	if k.shouldUseOptimizedBoostSystem(ctx) {
 		valAddrSDK := sdk.ValAddress(valAddr)
 		delta := math.LegacyNewDecFromInt(delegationBoost.Amount.Sub(oldAmount))
-		
+
 		if !delta.IsZero() {
 			k.updateValidatorBoostCacheWithDelta(ctx, valAddrSDK, delta)
 		}
@@ -1066,36 +1065,34 @@ func (k Keeper) SetDelegationBoost(ctx context.Context, delegationBoost types.De
 	return nil
 }
 
-
 func (k *Keeper) updateValidatorBoostCacheWithDelta(ctx context.Context, valAddr sdk.ValAddress, delta math.LegacyDec) {
 	currentTotal, err := k.getValidatorBoostTotalFromStore(ctx, valAddr)
 	if err != nil {
 		// Cache doesn't exist - lazy initialization
 		total, err := k.calculateTotalBoostLegacy(ctx, valAddr)
 		if err != nil {
-			k.Logger(ctx).Error("Failed to calculate initial boost total for cache", 
-				"validator", valAddr.String(), 
+			k.Logger(ctx).Error("Failed to calculate initial boost total for cache",
+				"validator", valAddr.String(),
 				"error", err)
 			return
 		}
-		
+
 		if err := k.setValidatorBoostTotalInStore(ctx, valAddr, total); err != nil {
-			k.Logger(ctx).Error("Failed to initialize validator boost cache", 
-				"validator", valAddr.String(), 
+			k.Logger(ctx).Error("Failed to initialize validator boost cache",
+				"validator", valAddr.String(),
 				"error", err)
 		}
 		return
 	}
-	
+
 	newTotal := currentTotal.Add(delta)
 	if err := k.setValidatorBoostTotalInStore(ctx, valAddr, newTotal); err != nil {
-		k.Logger(ctx).Error("Failed to update validator boost cache", 
-			"validator", valAddr.String(), 
+		k.Logger(ctx).Error("Failed to update validator boost cache",
+			"validator", valAddr.String(),
 			"delta", delta.String(),
 			"error", err)
 	}
 }
-
 
 func (k Keeper) DelegateBoost(
 	ctx context.Context,
