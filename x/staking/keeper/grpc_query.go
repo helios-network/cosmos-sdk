@@ -66,15 +66,33 @@ func (k Querier) Validators(ctx context.Context, req *types.QueryValidatorsReque
 }
 
 func (k Querier) ShareRepartitionMap(ctx context.Context, req *types.QueryShareRepartitionMapRequest) (*types.QueryShareRepartitionMapResponse, error) {
-	res, err := k.Validators(ctx, &types.QueryValidatorsRequest{})
-	if err != nil {
-		return nil, err
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := sdkCtx.BlockHeight()
+
+	// Try to get historical data with pre-calculated TotalAssetWeights
+	var historicalInfo types.HistoricalInfo
+	var found bool
+
+	for height := currentHeight; height >= currentHeight-2; height-- {
+		if hi, err := k.GetHistoricalInfo(ctx, height); err == nil {
+			historicalInfo = hi
+			found = true
+			break
+		}
 	}
-	shareRepartitionMap := map[string]types.SharesRepartition{}
-	stakingAssets := k.erc20Keeper.GetAllStakingAssets(sdk.UnwrapSDKContext(ctx))
+
+	if !found {
+		return k.shareRepartitionMapFallback(ctx, req)
+	}
+
+	stakingAssets := k.erc20Keeper.GetAllStakingAssets(sdkCtx)
+	shareRepartitionMap := make(map[string]types.SharesRepartition, len(stakingAssets))
+
+	// Initialize shares map
 	for _, consensusAsset := range stakingAssets {
-		shareRepartitionMap[consensusAsset.GetDenom()] = types.SharesRepartition{
-			Denom:                         consensusAsset.GetDenom(),
+		denom := consensusAsset.GetDenom()
+		shareRepartitionMap[denom] = types.SharesRepartition{
+			Denom:                         denom,
 			ContractAddress:               consensusAsset.GetContractAddress(),
 			BaseWeight:                    consensusAsset.GetBaseWeight(),
 			NetworkShares:                 math.NewIntFromUint64(0),
@@ -82,26 +100,17 @@ func (k Querier) ShareRepartitionMap(ctx context.Context, req *types.QueryShareR
 		}
 	}
 
-	for _, validator := range res.Validators {
-		delegationsRes, err := k.ValidatorDelegations(ctx, &types.QueryValidatorDelegationsRequest{ValidatorAddr: validator.OperatorAddress})
-		if err != nil {
-			continue
-		}
-		for _, delegationRes := range delegationsRes.DelegationResponses {
-			delegation := delegationRes.GetDelegation()
-			for _, asset := range delegation.AssetWeights {
-				shareRepartition, exists := shareRepartitionMap[asset.Denom]
-				if !exists {
-					continue
-				}
-				shareRepartition.NetworkShares = shareRepartition.NetworkShares.Add(asset.WeightedAmount)
-
-				sdk.UnwrapSDKContext(ctx).Logger().Info("Asset", "asset.WeightedAmount", asset.WeightedAmount, "shareRepartition.NetworkShares", shareRepartition.NetworkShares)
-				shareRepartitionMap[asset.Denom] = shareRepartition
+	// Aggregate pre-calculated asset weights
+	for _, validator := range historicalInfo.Valset {
+		for _, assetWeight := range validator.TotalAssetWeights {
+			if shareRepartition, exists := shareRepartitionMap[assetWeight.Denom]; exists {
+				shareRepartition.NetworkShares = shareRepartition.NetworkShares.Add(assetWeight.WeightedAmount)
+				shareRepartitionMap[assetWeight.Denom] = shareRepartition
 			}
 		}
 	}
 
+	// Calculate percentages
 	totalShares := math.NewIntFromUint64(0)
 	for _, consensusAsset := range stakingAssets {
 		shareRepartition, exists := shareRepartitionMap[consensusAsset.GetDenom()]
@@ -118,10 +127,77 @@ func (k Querier) ShareRepartitionMap(ctx context.Context, req *types.QueryShareR
 		}
 		if totalShares.LTE(math.NewIntFromUint64(0)) {
 			shareRepartition.NetworkPercentageSecurisation = "0%"
+		} else {
+			percentage := shareRepartition.NetworkShares.ToLegacyDec().Mul(math.NewIntFromUint64(100).ToLegacyDec()).Quo(totalShares.ToLegacyDec())
+			shareRepartition.NetworkPercentageSecurisation = fmt.Sprintf("%f%%", percentage)
+		}
+		shareRepartitionMap[consensusAsset.GetDenom()] = shareRepartition
+	}
+
+	return &types.QueryShareRepartitionMapResponse{SharesRepartitionMap: shareRepartitionMap}, nil
+}
+
+func (k Querier) shareRepartitionMapFallback(ctx context.Context, _req *types.QueryShareRepartitionMapRequest) (*types.QueryShareRepartitionMapResponse, error) {
+	res, err := k.Validators(ctx, &types.QueryValidatorsRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	stakingAssets := k.erc20Keeper.GetAllStakingAssets(sdk.UnwrapSDKContext(ctx))
+	shareRepartitionMap := make(map[string]types.SharesRepartition, len(stakingAssets))
+
+	// Initialize shares map
+	for _, consensusAsset := range stakingAssets {
+		denom := consensusAsset.GetDenom()
+		shareRepartitionMap[denom] = types.SharesRepartition{
+			Denom:                         denom,
+			ContractAddress:               consensusAsset.GetContractAddress(),
+			BaseWeight:                    consensusAsset.GetBaseWeight(),
+			NetworkShares:                 math.NewIntFromUint64(0),
+			NetworkPercentageSecurisation: "0%",
+		}
+	}
+
+	// Aggregate delegations data
+	for _, validator := range res.Validators {
+		delegationsRes, err := k.ValidatorDelegations(ctx, &types.QueryValidatorDelegationsRequest{ValidatorAddr: validator.OperatorAddress})
+		if err != nil {
 			continue
 		}
-		percentage := shareRepartitionMap[consensusAsset.GetDenom()].NetworkShares.ToLegacyDec().Mul(math.NewIntFromUint64(uint64(100)).ToLegacyDec()).Quo(totalShares.ToLegacyDec())
-		shareRepartition.NetworkPercentageSecurisation = fmt.Sprintf("%f%%", percentage)
+		for _, delegationRes := range delegationsRes.DelegationResponses {
+			delegation := delegationRes.GetDelegation()
+			for _, asset := range delegation.AssetWeights {
+				if shareRepartition, exists := shareRepartitionMap[asset.Denom]; exists {
+					shareRepartition.NetworkShares = shareRepartition.NetworkShares.Add(asset.WeightedAmount)
+
+					sdk.UnwrapSDKContext(ctx).Logger().Info("Asset", "asset.WeightedAmount", asset.WeightedAmount, "shareRepartition.NetworkShares", shareRepartition.NetworkShares)
+					shareRepartitionMap[asset.Denom] = shareRepartition
+				}
+			}
+		}
+	}
+
+	// Calculate percentages - EXACTEMENT comme ton code original
+	totalShares := math.NewIntFromUint64(0)
+	for _, consensusAsset := range stakingAssets {
+		shareRepartition, exists := shareRepartitionMap[consensusAsset.GetDenom()]
+		if !exists {
+			continue
+		}
+		totalShares = totalShares.Add(shareRepartition.NetworkShares)
+	}
+
+	for _, consensusAsset := range stakingAssets {
+		shareRepartition, exists := shareRepartitionMap[consensusAsset.GetDenom()]
+		if !exists {
+			continue
+		}
+		if totalShares.LTE(math.NewIntFromUint64(0)) {
+			shareRepartition.NetworkPercentageSecurisation = "0%"
+		} else {
+			percentage := shareRepartition.NetworkShares.ToLegacyDec().Mul(math.NewIntFromUint64(100).ToLegacyDec()).Quo(totalShares.ToLegacyDec())
+			shareRepartition.NetworkPercentageSecurisation = fmt.Sprintf("%f%%", percentage)
+		}
 		shareRepartitionMap[consensusAsset.GetDenom()] = shareRepartition
 	}
 
