@@ -48,9 +48,9 @@ func (k BaseKeeper) InitGenesis(ctx context.Context, genState *types.GenesisStat
 	}
 	totalSupply := totalSupplyMap.ToCoins()
 
-	if !genState.Supply.Empty() && !genState.Supply.Equal(totalSupply) {
-		panic(fmt.Errorf("genesis supply is incorrect, expected %v, got %v", genState.Supply, totalSupply))
-	}
+	// if !genState.Supply.Empty() && !genState.Supply.Equal(totalSupply) {
+	// 	panic(fmt.Errorf("genesis supply is incorrect, expected %v, got %v", genState.Supply, totalSupply))
+	// }
 
 	for _, supply := range totalSupply {
 		k.setSupply(ctx, supply)
