@@ -58,7 +58,10 @@ func CollectGenTxsCmd(genBalIterator types.GenesisBalancesIterator, defaultNodeH
 
 			toPrint.AppMessage = appMessage
 
-			return displayInfo(toPrint)
+			// enable with flag --print-info
+			// displayInfo(toPrint)
+
+			return nil
 		},
 	}
 
