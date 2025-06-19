@@ -540,6 +540,40 @@ func (k Querier) TotalBoostedDelegations(ctx context.Context, req *types.QueryTo
 	}, nil
 }
 
+func (k Querier) ValidatorAssets(ctx context.Context, req *types.QueryValidatorAssetsRequest) (*types.QueryValidatorAssetsResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+	if req.ValidatorAddr == "" {
+		return nil, status.Error(codes.InvalidArgument, "validator address cannot be empty")
+	}
+
+	valAddr, err := k.validatorAddressCodec.StringToBytes(req.ValidatorAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = k.GetValidator(ctx, valAddr)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "validator %s not found", req.ValidatorAddr)
+	}
+
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	currentHeight := sdkCtx.BlockHeight()
+
+	for height := currentHeight; height >= currentHeight-3; height-- {
+		if hi, err := k.GetHistoricalInfo(ctx, height); err == nil {
+			for _, validator := range hi.Valset {
+				if validator.OperatorAddress == req.ValidatorAddr {
+					return &types.QueryValidatorAssetsResponse{Assets: validator.TotalAssetWeights}, nil
+				}
+			}
+		}
+	}
+
+	return &types.QueryValidatorAssetsResponse{Assets: []types.AssetWeight{}}, nil
+}
+
 func (k Querier) TotalBoostedValidator(ctx context.Context, req *types.QueryTotalBoostedValidatorRequest) (*types.QueryTotalBoostedValidatorResponse, error) {
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "empty request")
@@ -1197,7 +1231,7 @@ func (k Keeper) GetCurrentEpochHandler(ctx context.Context, req *types.QueryCurr
 		CurrentEpoch:       currentEpoch,
 		EpochLength:        epochLength,
 		LastEpochHeight:    lastEpochHeight,
-		ValidatorsPerEpoch: validatorsPerEpoch,
+		ValidatorsPerEpoch:  validatorsPerEpoch,
 		EpochEnabled:       epochEnabled,
 	}, nil
 }

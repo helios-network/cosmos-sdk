@@ -75,7 +75,7 @@ message MsgCreateValidator {
     (gogoproto.nullable)   = false,
     (amino.dont_omitempty) = true
   ];
-  bool                     delegate_authorization = 9 [(amino.dont_omitempty) = true];
+  bool delegate_authorization = 9 [(amino.dont_omitempty) = true];
 }
 
 // MsgCreateValidatorResponse defines the Msg/CreateValidator response type.

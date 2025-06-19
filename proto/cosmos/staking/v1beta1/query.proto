@@ -213,6 +213,11 @@ service Query {
       get: "/cosmos/staking/v1beta1/epoch/{block_height}"
     };
   }
+
+  rpc ValidatorAssets(QueryValidatorAssetsRequest) returns (QueryValidatorAssetsResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/{validator_addr}/assets";
+  }
 }
 
 // Consolidated Epoch Request and Response
@@ -695,4 +700,12 @@ message QueryTotalBoostedDelegationsRequest {
 
 message QueryTotalBoostedDelegationsResponse {
   repeated DelegationBoost delegation_boosts = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+}
+
+message QueryValidatorAssetsRequest {
+  string validator_addr = 1 [(cosmos_proto.scalar) = "cosmos.ValidatorAddressString"];
+}
+
+message QueryValidatorAssetsResponse {
+  repeated AssetWeight assets = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
