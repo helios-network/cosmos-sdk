@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	corestore "cosmossdk.io/core/store"
@@ -295,11 +296,27 @@ func (k Keeper) SetDelegation(ctx context.Context, delegation types.Delegation) 
 		return err
 	}
 
+	// Get old delegation for cache update BEFORE storing new one
+	var oldWeights []*types.AssetWeight
+	if k.shouldUseOptimizedAssetWeights(sdk.UnwrapSDKContext(ctx)) {
+		if oldDel, err := k.GetDelegation(ctx, delegatorAddress, valAddr); err == nil {
+			oldWeights = oldDel.AssetWeights
+		}
+	}
+
 	store := k.storeService.OpenKVStore(ctx)
 	b := types.MustMarshalDelegation(k.cdc, delegation)
 	err = store.Set(types.GetDelegationKey(delegatorAddress, valAddr), b)
 	if err != nil {
 		return err
+	}
+
+	// Update validator asset weights cache after storing
+	if k.shouldUseOptimizedAssetWeights(sdk.UnwrapSDKContext(ctx)) {
+		changes := k.calculateAssetWeightChanges(oldWeights, delegation.AssetWeights)
+		if len(changes) > 0 {
+			k.updateValidatorAssetWeightsCache(ctx, valAddr, changes)
+		}
 	}
 
 	// set the delegation in validator delegator index
@@ -321,6 +338,19 @@ func (k Keeper) RemoveDelegation(ctx context.Context, delegation types.Delegatio
 	// TODO: Consider calling hooks outside of the store wrapper functions, it's unobvious.
 	if err := k.Hooks().BeforeDelegationRemoved(ctx, delegatorAddress, valAddr); err != nil {
 		return err
+	}
+
+	// Update cache by removing asset weights
+	if k.shouldUseOptimizedAssetWeights(sdk.UnwrapSDKContext(ctx)) && len(delegation.AssetWeights) > 0 {
+		negativeChanges := make([]*types.AssetWeight, len(delegation.AssetWeights))
+		for i, aw := range delegation.AssetWeights {
+			negativeChanges[i] = &types.AssetWeight{
+				Denom:          aw.Denom,
+				BaseAmount:     aw.BaseAmount.Neg(),
+				WeightedAmount: aw.WeightedAmount.Neg(),
+			}
+		}
+		k.updateValidatorAssetWeightsCache(ctx, valAddr, negativeChanges)
 	}
 
 	store := k.storeService.OpenKVStore(ctx)
@@ -1235,7 +1265,6 @@ func (k Keeper) Delegate(
 	validator types.Validator,
 	subtractAccount bool,
 ) (newShares math.LegacyDec, err error) {
-
 	// In some situations, the exchange rate becomes invalid, e.g. if
 	// Validator loses all tokens due to slashing. In this case,
 	// make all future delegations invalid.
@@ -1551,7 +1580,6 @@ func (k Keeper) Undelegate(
 	erc20Denom string,
 	erc20Amount math.Int,
 ) (time.Time, math.Int, error) {
-
 	validator, err := k.GetValidator(ctx, valAddr)
 	if err != nil {
 		return time.Time{}, math.Int{}, err
@@ -1584,7 +1612,7 @@ func (k Keeper) Undelegate(
 	// Update asset weight for the specific denom
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
-	//TODO: to recheck if we remove asset weight after or before completeUnbonding
+	// TODO: to recheck if we remove asset weight after or before completeUnbonding
 	if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, returnAmount, sdkCtx); err != nil {
 		return time.Time{}, math.Int{}, err
 	}
@@ -1859,4 +1887,110 @@ func (k Keeper) ValidateUnbondAmount(
 	}
 
 	return shares, nil
+}
+
+// updateValidatorAssetWeightsCache updates the validator asset weights cache
+func (k *Keeper) updateValidatorAssetWeightsCache(ctx context.Context, valAddr sdk.ValAddress, changes []*types.AssetWeight) {
+	if !k.shouldUseOptimizedAssetWeights(sdk.UnwrapSDKContext(ctx)) {
+		return
+	}
+
+	validator, err := k.GetValidator(ctx, valAddr)
+	if err != nil {
+		return
+	}
+
+	// Check if this is the first time (TotalAssetWeights is nil, not just empty)
+	if validator.TotalAssetWeights == nil {
+		weights, err := k.GetValidatorAssetWeightsFromDelegations(ctx, validator)
+		if err == nil {
+			validator.TotalAssetWeights = weights
+			k.SetValidator(ctx, validator)
+		}
+		return
+	}
+
+	// Use validator's TotalAssetWeights field directly
+	totals := make(map[string]types.AssetWeight)
+	for _, w := range validator.TotalAssetWeights {
+		totals[w.Denom] = w
+	}
+
+	// Apply changes
+	for _, change := range changes {
+		if existing, exists := totals[change.Denom]; exists {
+			existing.BaseAmount = existing.BaseAmount.Add(change.BaseAmount)
+			existing.WeightedAmount = existing.WeightedAmount.Add(change.WeightedAmount)
+			if existing.BaseAmount.IsZero() && existing.WeightedAmount.IsZero() {
+				delete(totals, change.Denom)
+			} else {
+				totals[change.Denom] = existing
+			}
+		} else if !change.BaseAmount.IsZero() || !change.WeightedAmount.IsZero() {
+			totals[change.Denom] = types.AssetWeight{
+				Denom:          change.Denom,
+				BaseAmount:     change.BaseAmount,
+				WeightedAmount: change.WeightedAmount,
+			}
+		}
+	}
+
+	// Convert back to slice with deterministic ordering
+	denoms := make([]string, 0, len(totals))
+	for denom := range totals {
+		denoms = append(denoms, denom)
+	}
+	sort.Strings(denoms)
+
+	validator.TotalAssetWeights = make([]types.AssetWeight, len(denoms))
+	for i, denom := range denoms {
+		validator.TotalAssetWeights[i] = totals[denom]
+	}
+
+	// Save validator with updated TotalAssetWeights
+	k.SetValidator(ctx, validator)
+}
+
+// calculateAssetWeightChanges calculates the difference between old and new asset weights
+func (k *Keeper) calculateAssetWeightChanges(oldWeights, newWeights []*types.AssetWeight) []*types.AssetWeight {
+	changes := make(map[string]*types.AssetWeight)
+
+	// Add new weights
+	for _, aw := range newWeights {
+		changes[aw.Denom] = &types.AssetWeight{
+			Denom:          aw.Denom,
+			BaseAmount:     aw.BaseAmount,
+			WeightedAmount: aw.WeightedAmount,
+		}
+	}
+
+	// Subtract old weights
+	for _, aw := range oldWeights {
+		if existing, exists := changes[aw.Denom]; exists {
+			existing.BaseAmount = existing.BaseAmount.Sub(aw.BaseAmount)
+			existing.WeightedAmount = existing.WeightedAmount.Sub(aw.WeightedAmount)
+		} else {
+			changes[aw.Denom] = &types.AssetWeight{
+				Denom:          aw.Denom,
+				BaseAmount:     aw.BaseAmount.Neg(),
+				WeightedAmount: aw.WeightedAmount.Neg(),
+			}
+		}
+	}
+
+	// Convert to slice with deterministic ordering, filtering out zero changes
+	denoms := make([]string, 0, len(changes))
+	for denom, change := range changes {
+		if !change.BaseAmount.IsZero() || !change.WeightedAmount.IsZero() {
+			denoms = append(denoms, denom)
+		}
+	}
+	sort.Strings(denoms) // Ensure deterministic ordering
+
+	result := make([]*types.AssetWeight, len(denoms))
+	for i, denom := range denoms {
+		result[i] = changes[denom]
+	}
+
+	return result
 }

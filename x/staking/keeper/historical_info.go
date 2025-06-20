@@ -111,30 +111,54 @@ func (k Keeper) TrackHistoricalInfo(ctx context.Context) error {
 		}
 	}
 
-	// if there is no need to persist historicalInfo, return
 	if entryNum == 0 {
 		return nil
 	}
 
-	// Create HistoricalInfo struct
-	lastVals, err := k.GetLastValidators(ctx)
+	activeVals, err := k.GetLastValidators(ctx)
 	if err != nil {
 		return err
 	}
 
-	// Calculate asset weights for each validator
-	for i, val := range lastVals {
-		totalAssetWeights, err := k.GetValidatorAssetWeightsFromDelegations(ctx, val)
-		if err != nil {
-			continue
-		}
-		// Update the validator with its asset weights
-		val.TotalAssetWeights = totalAssetWeights
-		lastVals[i] = val
+	inactiveVals, err := k.GetInactiveValidatorsWithDelegations(ctx)
+	if err != nil {
+		return err
 	}
 
-	historicalEntry := types.NewHistoricalInfo(sdkCtx.BlockHeader(), types.Validators{Validators: lastVals, ValidatorCodec: k.validatorAddressCodec}, k.PowerReduction(ctx))
+	useOptimized := k.shouldUseOptimizedAssetWeights(sdkCtx)
 
-	// Set latest HistoricalInfo at current height
+	// Calculate asset weights for active validators (top 100)
+	for i, val := range activeVals {
+		if useOptimized && len(val.TotalAssetWeights) > 0 {
+			// Asset weights already pre-calculated and cached - skip expensive calculation
+			continue
+		}
+		// No cached weights available - calculate from all delegations (expensive)
+		weights, err := k.GetValidatorAssetWeightsFromDelegations(ctx, val)
+		if err == nil {
+			activeVals[i].TotalAssetWeights = weights
+		}
+	}
+
+	// Calculate asset weights for inactive validators (those with delegations but not in top 100)
+	for i, val := range inactiveVals {
+		if useOptimized && len(val.TotalAssetWeights) > 0 {
+			// Asset weights already pre-calculated and cached - skip expensive calculation
+			continue
+		}
+		// No cached weights available - calculate from all delegations (expensive)
+		weights, err := k.GetValidatorAssetWeightsFromDelegations(ctx, val)
+		if err == nil {
+			inactiveVals[i].TotalAssetWeights = weights
+		}
+	}
+
+	historicalEntry := types.NewHistoricalInfoWithInactiveValidators(
+		sdkCtx.BlockHeader(),
+		types.Validators{Validators: activeVals, ValidatorCodec: k.validatorAddressCodec},
+		types.Validators{Validators: inactiveVals, ValidatorCodec: k.validatorAddressCodec},
+		k.PowerReduction(ctx),
+	)
+
 	return k.SetHistoricalInfo(ctx, sdkCtx.BlockHeight(), &historicalEntry)
 }
