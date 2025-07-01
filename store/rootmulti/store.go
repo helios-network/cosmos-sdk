@@ -705,10 +705,9 @@ func (rs *Store) PruneStores(pruningHeight int64) (err error) {
 		}
 
 		if errors.Is(err, iavltree.ErrVersionDoesNotExist) {
-			return err
+			rs.logger.Error("failed to prune store", "key", key, "err", err)
+			continue
 		}
-
-		rs.logger.Error("failed to prune store", "key", key, "err", err)
 	}
 	return nil
 }
