@@ -227,6 +227,10 @@ func (st *Store) Delete(key []byte) {
 // is returned if any single version is invalid or the delete fails. All writes
 // happen in a single batch with a single commit.
 func (st *Store) DeleteVersionsTo(version int64) error {
+	if !st.tree.VersionExists(version) {
+		// if the version does not exist, we do not need to delete anything
+		return nil
+	}
 	return st.tree.DeleteVersionsTo(version)
 }
 
