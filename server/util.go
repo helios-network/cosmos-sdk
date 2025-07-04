@@ -336,6 +336,7 @@ func AddCommands(rootCmd *cobra.Command, defaultNodeHome string, appCreator type
 		startCmd,
 		cometCmd,
 		ExportCmd(appExport, defaultNodeHome),
+		ExportSoftResetCmd(appExport, defaultNodeHome),
 		version.NewVersionCommand(),
 		NewRollbackCmd(appCreator, defaultNodeHome),
 	)
@@ -365,6 +366,7 @@ func AddCommandsWithStartCmdOptions(rootCmd *cobra.Command, defaultNodeHome stri
 		startCmd,
 		cometCmd,
 		ExportCmd(appExport, defaultNodeHome),
+		ExportSoftResetCmd(appExport, defaultNodeHome),
 		version.NewVersionCommand(),
 		NewRollbackCmd(appCreator, defaultNodeHome),
 	)

@@ -59,6 +59,7 @@ func NewExportSystem(t *testing.T, exporter types.AppExporter) *ExportSystem {
 	sys := cmdtest.NewSystem()
 	sys.AddCommands(
 		server.ExportCmd(exporter, homeDir),
+		server.ExportSoftResetCmd(exporter, homeDir),
 		genutilcli.InitCmd(module.NewBasicManager(), homeDir),
 	)
 
