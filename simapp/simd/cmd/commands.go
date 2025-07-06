@@ -118,6 +118,7 @@ func initRootCmd(
 		pruning.Cmd(newApp, simapp.DefaultNodeHome),
 		db.Cmd(newApp, simapp.DefaultNodeHome),
 		db.BlockstoreCmd(newApp, simapp.DefaultNodeHome),
+		db.StatedbCmd(newApp, simapp.DefaultNodeHome),
 		snapshot.Cmd(newApp),
 	)
 
