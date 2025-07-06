@@ -28,7 +28,7 @@ import (
 type Genesis struct {
 	AppState      map[string]json.RawMessage `json:"app_state"`
 	InitialHeight int64                      `json:"initial_height"`
-	Consensus     json.RawMessage            `json:"consensus"`
+	Consensus     json.RawMessage            `json:"consensus,omitempty"`
 }
 
 type BankBalance struct {
@@ -63,13 +63,23 @@ type AssetWeight struct {
 }
 
 type AuthAccount struct {
+	Type        string      `json:"@type"`
 	BaseAccount BaseAccount `json:"base_account"`
 	Permissions []string    `json:"permissions,omitempty"`
+	CodeHash    string      `json:"code_hash,omitempty"`
+	Name        string      `json:"name,omitempty"`
+}
+
+type PubKey struct {
+	Type  string `json:"@type"`
+	Value string `json:"value"`
 }
 
 type BaseAccount struct {
-	Address  string `json:"address"`
-	Sequence string `json:"sequence"`
+	Address       string  `json:"address"`
+	PubKey        *PubKey `json:"pub_key,omitempty"`
+	AccountNumber string  `json:"account_number"`
+	Sequence      string  `json:"sequence"`
 }
 
 type HyperionSubState struct {
@@ -122,152 +132,164 @@ func processGenesisSoftReset(genesisJSON *Genesis, tinyGenesis []byte, walletAdd
 	fmt.Println("Adding boost balances back to the delegator")
 
 	// Parse staking state
-	var stakingState StakingState
+	var stakingState map[string]interface{}
 	if err := json.Unmarshal(genesisJSON.AppState["staking"], &stakingState); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal staking state: %w", err)
 	}
 
-	// Parse bank state
-	var bankBalances []BankBalance
-	if err := json.Unmarshal(genesisJSON.AppState["bank"], &map[string]interface{}{
-		"balances": &bankBalances,
-	}); err != nil {
+	var bankState map[string]interface{}
+	if err := json.Unmarshal(genesisJSON.AppState["bank"], &bankState); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal bank state: %w", err)
 	}
 
 	// Add boost balances back to the delegator
-	for _, delegationBoost := range stakingState.DelegationBoosts {
-		balance := findBalance(bankBalances, delegationBoost.DelegatorAddress)
-		if balance != nil {
-			aheliosBalance := findCoin(balance.Coins, "ahelios")
-			if aheliosBalance != nil {
-				aheliosBalance.Amount = addStringAmounts(aheliosBalance.Amount, delegationBoost.Amount)
-			} else {
-				balance.Coins = append(balance.Coins, Coin{
-					Denom:  "ahelios",
-					Amount: delegationBoost.Amount,
-				})
+	for _, delegationBoost := range stakingState["delegation_boosts"].([]interface{}) {
+		balanceFound := false
+		for _, balance := range bankState["balances"].([]interface{}) {
+			if balance.(map[string]interface{})["address"] == delegationBoost.(map[string]interface{})["delegator_address"].(string) {
+				balanceFound = true
+				for _, coin := range balance.(map[string]interface{})["coins"].([]interface{}) {
+					if coin.(map[string]interface{})["denom"] == "ahelios" {
+						coin.(map[string]interface{})["amount"] = addStringAmounts(coin.(map[string]interface{})["amount"].(string), delegationBoost.(map[string]interface{})["amount"].(string))
+					}
+				}
 			}
-		} else {
-			bankBalances = append(bankBalances, BankBalance{
-				Address: delegationBoost.DelegatorAddress,
-				Coins: []Coin{{
-					Denom:  "ahelios",
-					Amount: delegationBoost.Amount,
-				}},
+		}
+
+		if !balanceFound {
+			bankState["balances"] = append(bankState["balances"].([]interface{}), map[string]interface{}{
+				"address": delegationBoost.(map[string]interface{})["delegator_address"].(string),
+				"coins": []interface{}{
+					map[string]interface{}{
+						"denom":  "ahelios",
+						"amount": delegationBoost.(map[string]interface{})["amount"].(string),
+					},
+				},
 			})
 		}
 	}
 
 	// Remove delegation boosts
-	stakingState.DelegationBoosts = []DelegationBoost{}
+	stakingState["delegation_boosts"] = []interface{}{}
 
 	fmt.Println("Adding delegation balances back to the delegator")
 	// Add the delegation to the balance of the delegator
-	for _, delegation := range stakingState.Delegations {
-		balance := findBalance(bankBalances, delegation.DelegatorAddress)
-		if balance != nil {
-			for _, assetWeight := range delegation.AssetWeights {
-				existingAssetWeight := findCoin(balance.Coins, assetWeight.Denom)
-				if existingAssetWeight == nil {
-					balance.Coins = append(balance.Coins, Coin{
-						Denom:  assetWeight.Denom,
-						Amount: assetWeight.BaseAmount,
-					})
-				} else {
-					existingAssetWeight.Amount = addStringAmounts(existingAssetWeight.Amount, assetWeight.BaseAmount)
+	for _, delegation := range stakingState["delegations"].([]interface{}) {
+		balanceFound := false
+		for _, balance := range bankState["balances"].([]interface{}) {
+			if balance.(map[string]interface{})["address"] == delegation.(map[string]interface{})["delegator_address"].(string) {
+				balanceFound = true
+				for _, assetWeight := range delegation.(map[string]interface{})["asset_weights"].([]interface{}) {
+					foundCoin := false
+					for _, coin := range balance.(map[string]interface{})["coins"].([]interface{}) {
+						if coin.(map[string]interface{})["denom"] == assetWeight.(map[string]interface{})["denom"].(string) {
+							foundCoin = true
+							coin.(map[string]interface{})["amount"] = addStringAmounts(coin.(map[string]interface{})["amount"].(string), assetWeight.(map[string]interface{})["base_amount"].(string))
+						}
+					}
+					if !foundCoin {
+						balance.(map[string]interface{})["coins"] = append(balance.(map[string]interface{})["coins"].([]interface{}), map[string]interface{}{
+							"denom":  assetWeight.(map[string]interface{})["denom"].(string),
+							"amount": assetWeight.(map[string]interface{})["base_amount"].(string),
+						})
+					}
 				}
 			}
-		} else {
-			coins := make([]Coin, len(delegation.AssetWeights))
-			for i, assetWeight := range delegation.AssetWeights {
-				coins[i] = Coin{
-					Denom:  assetWeight.Denom,
-					Amount: assetWeight.BaseAmount,
-				}
+		}
+
+		if !balanceFound {
+			coins := make([]interface{}, len(delegation.(map[string]interface{})["asset_weights"].([]interface{})))
+			for i, assetWeight := range delegation.(map[string]interface{})["asset_weights"].([]interface{}) {
+				coins[i] = assetWeight
 			}
-			bankBalances = append(bankBalances, BankBalance{
-				Address: delegation.DelegatorAddress,
-				Coins:   coins,
+			bankState["balances"] = append(bankState["balances"].([]interface{}), map[string]interface{}{
+				"address": delegation.(map[string]interface{})["delegator_address"].(string),
+				"coins":   coins,
 			})
 		}
 	}
 
-	stakingState.Validators = []interface{}{}
-	stakingState.Delegations = []Delegation{}
+	stakingState["validators"] = []interface{}{}
+	stakingState["delegations"] = []interface{}{}
 
 	fmt.Println("Removing distribution and staking pool balances")
 	// Remove specific module balances
-	for i := range bankBalances {
-		if bankBalances[i].Address == "helios1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8nte205" { // distribution module
-			bankBalances[i].Coins = []Coin{}
+	for i := range bankState["balances"].([]interface{}) {
+		if bankState["balances"].([]interface{})[i].(map[string]interface{})["address"] == "helios1jv65s3grqf6v6jl3dp4t6c9t9rk99cd8nte205" { // distribution module
+			bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"] = []interface{}{}
 		}
-		if bankBalances[i].Address == "helios1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3p05elu" { // staking pool
-			bankBalances[i].Coins = []Coin{}
+		if bankState["balances"].([]interface{})[i].(map[string]interface{})["address"] == "helios1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3p05elu" { // staking pool
+			bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"] = []interface{}{}
 		}
-		if bankBalances[i].Address == "helios13c59hc2zmcrzzxfgh0umpf077cz86pytvzxda6" { // boosted pool
-			bankBalances[i].Coins = []Coin{}
+		if bankState["balances"].([]interface{})[i].(map[string]interface{})["address"] == "helios13c59hc2zmcrzzxfgh0umpf077cz86pytvzxda6" { // boosted pool
+			bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"] = []interface{}{}
 		}
 	}
 
 	fmt.Println("Removing hyperion sub states (batches, unbatched_transfers, batch_confirms)")
 	// Parse hyperion state
-	var hyperionState HyperionState
+	var hyperionState map[string]interface{}
 	if err := json.Unmarshal(genesisJSON.AppState["hyperion"], &hyperionState); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal hyperion state: %w", err)
 	}
 
-	for i := range hyperionState.SubStates {
-		if len(hyperionState.SubStates[i].Batches) > 0 {
+	for i := range hyperionState["sub_states"].([]interface{}) {
+		if len(hyperionState["sub_states"].([]interface{})[i].(map[string]interface{})["batches"].([]interface{})) > 0 {
 			// TODO: Manage send back to the sender
-			hyperionState.SubStates[i].Batches = []interface{}{}
+			hyperionState["sub_states"].([]interface{})[i].(map[string]interface{})["batches"] = []interface{}{}
 		}
-		if len(hyperionState.SubStates[i].UnbatchedTransfers) > 0 {
-			hyperionState.SubStates[i].UnbatchedTransfers = []interface{}{}
+		if len(hyperionState["sub_states"].([]interface{})[i].(map[string]interface{})["unbatched_transfers"].([]interface{})) > 0 {
+			hyperionState["sub_states"].([]interface{})[i].(map[string]interface{})["unbatched_transfers"] = []interface{}{}
 			// TODO: Manage send back to the sender
 		}
-		if len(hyperionState.SubStates[i].BatchConfirms) > 0 {
-			hyperionState.SubStates[i].BatchConfirms = []interface{}{}
+		if len(hyperionState["sub_states"].([]interface{})[i].(map[string]interface{})["batch_confirms"].([]interface{})) > 0 {
+			hyperionState["sub_states"].([]interface{})[i].(map[string]interface{})["batch_confirms"] = []interface{}{}
 			// TODO: Manage send back to the sender
 		}
 	}
 
 	// Clear consensus validators
-	genesisJSON.Consensus = json.RawMessage(`{"validators": []}`)
+	genesisJSON.Consensus = nil
 
 	fmt.Println("Sorting balances by denom and removing 0 balances")
 	// Sort by denom and remove 0 balances
-	for i := range bankBalances {
+	for i := range bankState["balances"].([]interface{}) {
 		// Filter out 0 balances
-		var filteredCoins []Coin
-		for _, coin := range bankBalances[i].Coins {
-			if isAmountGreaterThan(coin.Amount, "0") {
+		var filteredCoins []interface{}
+		for _, coin := range bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"].([]interface{}) {
+			if isAmountGreaterThan(coin.(map[string]interface{})["amount"].(string), "0") {
 				filteredCoins = append(filteredCoins, coin)
 			}
 		}
-		bankBalances[i].Coins = filteredCoins
+		bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"] = filteredCoins
 
 		// Sort by denom
-		sort.Slice(bankBalances[i].Coins, func(j, k int) bool {
-			return bankBalances[i].Coins[j].Denom < bankBalances[i].Coins[k].Denom
+		sort.Slice(bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"].([]interface{}), func(j, k int) bool {
+			return bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"].([]interface{})[j].(map[string]interface{})["denom"].(string) < bankState["balances"].([]interface{})[i].(map[string]interface{})["coins"].([]interface{})[k].(map[string]interface{})["denom"].(string)
 		})
 	}
 
 	// Remove balances with little ahelios and no other coins
-	var filteredBalances []BankBalance
-	for _, balance := range bankBalances {
-		aheliosBalance := findCoin(balance.Coins, "ahelios")
-		if aheliosBalance != nil {
-			if len(balance.Coins) > 1 {
-				filteredBalances = append(filteredBalances, balance)
-			} else if isAmountGreaterThan(aheliosBalance.Amount, "1000000000000000000") {
-				filteredBalances = append(filteredBalances, balance)
-			}
-		} else {
-			filteredBalances = append(filteredBalances, balance)
-		}
-	}
-	bankBalances = filteredBalances
+	// var filteredBalances []interface{}
+	// for _, balance := range bankState["balances"].([]interface{}) {
+	// 	aheliosBalance := nil
+	// 	for _, coin := range balance.(map[string]interface{})["coins"].([]interface{}) {
+	// 		if coin.(map[string]interface{})["denom"] == "ahelios" {
+	// 			aheliosBalance = coin
+	// 			break
+	// 		}
+	// 	}
+	// 	if aheliosBalance != nil {
+	// 		if len(balance.(map[string]interface{})["coins"].([]interface{})) > 1 {
+	// 			filteredBalances = append(filteredBalances, balance)
+	// 		} else if isAmountGreaterThan(aheliosBalance.Amount, "1000000000000000000") {
+	// 			filteredBalances = append(filteredBalances, balance)
+	// 		}
+	// 	} else {
+	// 		filteredBalances = append(filteredBalances, balance)
+	// 	}
+	// }
+	// bankBalances = filteredBalances
 
 	fmt.Println("Merging genesis with tiny genesis")
 	// Parse tiny genesis
@@ -277,16 +299,6 @@ func processGenesisSoftReset(genesisJSON *Genesis, tinyGenesis []byte, walletAdd
 	}
 
 	tinyGenesisJSON.InitialHeight = genesisJSON.InitialHeight
-
-	// Update bank state
-	bankState := map[string]interface{}{
-		"balances": bankBalances,
-	}
-	bankStateBytes, err := json.Marshal(bankState)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal bank state: %w", err)
-	}
-	tinyGenesisJSON.AppState["bank"] = bankStateBytes
 
 	// Update ERC20 state
 	tinyGenesisJSON.AppState["erc20"] = genesisJSON.AppState["erc20"]
@@ -306,33 +318,35 @@ func processGenesisSoftReset(genesisJSON *Genesis, tinyGenesis []byte, walletAdd
 		if len(authAccounts[i].Permissions) > 0 {
 			hasBurner := false
 			hasStaking := false
-			for _, perm := range authAccounts[i].Permissions {
-				if perm == "burner" {
-					hasBurner = true
+			if authAccounts[i].Permissions != nil {
+				for _, perm := range authAccounts[i].Permissions {
+					if perm == "burner" {
+						hasBurner = true
+					}
+					if perm == "staking" {
+						hasStaking = true
+					}
 				}
-				if perm == "staking" {
-					hasStaking = true
-				}
-			}
-			if hasBurner && hasStaking {
-				// Clear balances for burner+staking accounts
-				for j := range bankBalances {
-					if authAccounts[i].BaseAccount.Address == bankBalances[j].Address {
-						bankBalances[j].Coins = []Coin{}
+				if hasBurner && hasStaking {
+					// Clear balances for burner+staking accounts
+					for j := range bankState["balances"].([]interface{}) {
+						if authAccounts[i].BaseAccount.Address == bankState["balances"].([]interface{})[j].(map[string]interface{})["address"].(string) {
+							bankState["balances"].([]interface{})[j].(map[string]interface{})["coins"] = []interface{}{}
+						}
 					}
 				}
 			}
 		}
 	}
 
-	authState := map[string]interface{}{
-		"accounts": authAccounts,
-	}
-	authStateBytes, err := json.Marshal(authState)
+	// Update bank state
+	bankStateBytes, err := json.Marshal(bankState)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal auth state: %w", err)
+		return nil, fmt.Errorf("failed to marshal bank state: %w", err)
 	}
-	tinyGenesisJSON.AppState["auth"] = authStateBytes
+	tinyGenesisJSON.AppState["bank"] = bankStateBytes
+
+	tinyGenesisJSON.AppState["auth"] = genesisJSON.AppState["auth"]
 
 	// Update hyperion state
 	hyperionStateBytes, err := json.Marshal(hyperionState)
@@ -342,7 +356,17 @@ func processGenesisSoftReset(genesisJSON *Genesis, tinyGenesis []byte, walletAdd
 	tinyGenesisJSON.AppState["hyperion"] = hyperionStateBytes
 
 	// Update staking state
-	stakingStateBytes, err := json.Marshal(stakingState)
+	stakingStateBytes, err := json.Marshal(map[string]interface{}{
+		"params":                stakingState["params"],
+		"last_total_power":      "0",
+		"last_validator_powers": []interface{}{},
+		"validators":            []interface{}{},
+		"delegations":           []interface{}{},
+		"unbonding_delegations": []interface{}{},
+		"redelegations":         []interface{}{},
+		"delegation_boosts":     []interface{}{},
+		"exported":              false,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal staking state: %w", err)
 	}

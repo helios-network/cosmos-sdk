@@ -1184,6 +1184,35 @@ func GetLatestVersion(db dbm.DB) int64 {
 	return latestVersion
 }
 
+func GetAllVersions(db dbm.DB) []int64 {
+	versions := []int64{}
+
+	latestVersion := GetLatestVersion(db)
+
+	// iterate over all the keys in the db
+	cInfoKey := fmt.Sprintf(commitInfoKeyFmt, latestVersion)
+	iter, err := db.ReverseIterator(nil, []byte(cInfoKey))
+	if err != nil {
+		panic(err)
+	}
+	defer iter.Close()
+	for iter.Valid() {
+		var version int64
+
+		if err := gogotypes.StdInt64Unmarshal(&version, iter.Value()); err != nil {
+			iter.Next()
+			continue
+		}
+		versions = append(versions, version)
+		if len(versions) >= 100 {
+			break
+		}
+		iter.Next()
+	}
+
+	return versions
+}
+
 // Commits each store and returns a new commitInfo.
 func commitStores(version int64, storeMap map[types.StoreKey]types.CommitKVStore, removalMap map[types.StoreKey]bool) *types.CommitInfo {
 	storeInfos := make([]types.StoreInfo, 0, len(storeMap))
