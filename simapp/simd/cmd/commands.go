@@ -119,6 +119,7 @@ func initRootCmd(
 		db.Cmd(newApp, simapp.DefaultNodeHome),
 		db.BlockstoreCmd(newApp, simapp.DefaultNodeHome),
 		db.StatedbCmd(newApp, simapp.DefaultNodeHome),
+		db.ValidateCmd(simapp.DefaultNodeHome),
 		snapshot.Cmd(newApp),
 	)
 
