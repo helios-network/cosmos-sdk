@@ -981,6 +981,9 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	// The SnapshotIfApplicable method will create the snapshot by starting the goroutine
 	app.snapshotManager.SnapshotIfApplicable(header.Height)
 
+	// prune application, statedb, blockstore
+	app.pruneApplication(retainHeight)
+
 	return resp, nil
 }
 
@@ -1290,6 +1293,7 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 // be a need to vary retention for other nodes, e.g. sentry nodes which do not
 // need historical blocks.
 func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
+	fmt.Println("minRetainBlocks", app.minRetainBlocks)
 	// pruning is disabled if minRetainBlocks is zero
 	if app.minRetainBlocks == 0 {
 		return 0
@@ -1322,7 +1326,7 @@ func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
 	// on the unbonding period and block commitment time as the two should be
 	// equivalent.
 	cp := app.GetConsensusParams(app.finalizeBlockState.Context())
-	if cp.Evidence != nil && cp.Evidence.MaxAgeNumBlocks > 0 {
+	if cp.Evidence != nil && cp.Evidence.MaxAgeNumBlocks > 0 && app.skipEvidenceRetention {
 		retentionHeight = commitHeight - cp.Evidence.MaxAgeNumBlocks
 	}
 
@@ -1330,6 +1334,8 @@ func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
 		snapshotRetentionHeights := app.snapshotManager.GetSnapshotBlockRetentionHeights()
 		if snapshotRetentionHeights > 0 {
 			retentionHeight = minNonZero(retentionHeight, commitHeight-snapshotRetentionHeights)
+
+			fmt.Println("snapshot retentionHeight", retentionHeight, "commitHeight", commitHeight, "snapshotRetentionHeights", snapshotRetentionHeights)
 		}
 	}
 
@@ -1340,6 +1346,8 @@ func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
 		// prune nothing in the case of a non-positive height
 		return 0
 	}
+
+	fmt.Println("retentionHeight", retentionHeight)
 
 	return retentionHeight
 }

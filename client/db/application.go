@@ -26,7 +26,7 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 		Use:     "application-db [method]",
 		Short:   "Apply a method to the application database",
 		Long:    `Apply a method to the application database`,
-		Example: "application-db [list,load-version]",
+		Example: "application-db [list,load-version,get]",
 		Args:    cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// bind flags to the Context's Viper so we can get pruning options.
@@ -98,6 +98,23 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 
 				cmd.Printf("%v version - loaded\n", version)
 			}
+			// else if method == "get" {
+			// 	if len(args) < 2 {
+			// 		return fmt.Errorf("version is required")
+			// 	}
+
+			// 	vp.Set("version", args[1])
+
+			// 	vp.Set(server.FlagPruning, "nothing")
+
+			// 	version := vp.GetInt64("version")
+
+			// 	logger := log.NewLogger(cmd.OutOrStdout())
+			// 	app := appCreator(logger, db, nil, vp)
+			// 	cms := app.CommitMultiStore()
+
+			// 	cms.PruneVersion()
+			// }
 
 			db.Close()
 			return nil
@@ -113,4 +130,33 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 func openDBApplication(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
 	dataDir := filepath.Join(rootDir, "data")
 	return dbm.NewDB("application", backendType, dataDir)
+}
+
+func DeleteLatestApplication(appCreator servertypes.AppCreator, homeDir string, backendType string, cmd *cobra.Command) error {
+	vp := viper.New()
+	vp.Set(server.FlagPruning, "nothing")
+
+	db, err := openDBApplication(homeDir, dbm.BackendType(backendType))
+	if err != nil {
+		return err
+	}
+
+	logger := log.NewLogger(cmd.OutOrStdout())
+	app := appCreator(logger, db, nil, vp)
+	cms := app.CommitMultiStore()
+
+	latestVersion := rootmulti.GetLatestVersion(db)
+	newLatestVersion := latestVersion - 1
+
+	if newLatestVersion < 0 {
+		return fmt.Errorf("version is less than 0")
+	}
+
+	err = cms.RollbackToVersion(newLatestVersion)
+	if err != nil {
+		return err
+	}
+
+	cmd.Printf("%v version - loaded\n", newLatestVersion)
+	return nil
 }

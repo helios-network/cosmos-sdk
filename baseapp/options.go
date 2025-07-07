@@ -71,6 +71,11 @@ func SetMinRetainBlocks(minRetainBlocks uint64) func(*BaseApp) {
 	return func(bapp *BaseApp) { bapp.setMinRetainBlocks(minRetainBlocks) }
 }
 
+// SetSkipEvidenceRetention returns a BaseApp option function that sets the skip evidence retention
+func SetSkipEvidenceRetention(skipEvidenceRetention bool) func(*BaseApp) {
+	return func(bapp *BaseApp) { bapp.setSkipEvidenceRetention(skipEvidenceRetention) }
+}
+
 // SetTrace will turn on or off trace flag
 func SetTrace(trace bool) func(*BaseApp) {
 	return func(app *BaseApp) { app.setTrace(trace) }

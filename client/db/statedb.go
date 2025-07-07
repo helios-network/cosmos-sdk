@@ -2,7 +2,9 @@ package db
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -343,120 +345,11 @@ func deleteLatestStateCmd(defaultNodeHome string) *cobra.Command {
 				backendType = "goleveldb" // default backend
 			}
 
-			// Get the latest state to see what will be deleted
-			db, err := openDBState(homeDir, cometdbm.BackendType(backendType))
-			if err != nil {
-				return fmt.Errorf("failed to open state database: %w", err)
-			}
-			stateStore := sm.NewStore(db, sm.StoreOptions{})
-			latestState, err := stateStore.Load()
-			if err != nil {
-				return fmt.Errorf("failed to load latest state: %w", err)
-			}
-			currentHeight := latestState.LastBlockHeight
-			newLatestHeight := currentHeight - 1
-			db.Close()
-			// ------------------------------------------------------------
-
-			blockstoreDB, err := openDBBlockStore(homeDir, dbm.BackendType(backendType))
-			if err != nil {
-				return fmt.Errorf("failed to open blockstore database: %w", err)
-			}
-
-			lastBlock, err := GetBlock(blockstoreDB, newLatestHeight)
-			if err != nil {
-				return fmt.Errorf("failed to load block: %w", err)
-			}
-			lastBlockProto, err := lastBlock.ToProto()
-			if err != nil {
-				return fmt.Errorf("failed to convert block to proto: %w", err)
-			}
-			currentBlock, err := GetBlock(blockstoreDB, currentHeight)
-			if err != nil {
-				return fmt.Errorf("failed to load block: %w", err)
-			}
-			// currentBlockProto, err := currentBlock.ToProto()
-			// if err != nil {
-			// 	return fmt.Errorf("failed to convert block to proto: %w", err)
-			// }
-
-			db, err = openDBState(homeDir, cometdbm.BackendType(backendType))
-			if err != nil {
-				return fmt.Errorf("failed to open state database: %w", err)
-			}
-			defer db.Close()
-
-			// Get the latest state to see what will be deleted
-			stateStore = sm.NewStore(db, sm.StoreOptions{})
-			latestState, err = stateStore.Load()
-			if err != nil {
-				return fmt.Errorf("failed to load latest state: %w", err)
-			}
-
-			if latestState.LastBlockHeight == 0 {
-				cmd.Println("No state found in the database.")
-				return nil
-			}
-			currentHeight = latestState.LastBlockHeight
-
-			if !hasValidatorsKey(db, currentHeight) {
-				cmd.Printf("Validators key not found at height %d. Deletion cancelled.\n", currentHeight)
-				return nil
-			}
-
-			// Check if force flag is set
-			force, _ := cmd.Flags().GetBool("force")
-
-			if !force {
-				// Ask for confirmation
-				cmd.Printf("WARNING: This will delete the latest state (height: %d) from the statedb.\n", currentHeight)
-				cmd.Printf("This operation cannot be undone. Are you sure you want to continue? (y/N): ")
-
-				var response string
-				fmt.Scanln(&response)
-				if response != "y" && response != "Y" {
-					cmd.Println("Deletion cancelled.")
-					return nil
-				}
-			}
-
-			validators, err := stateStore.LoadValidators(newLatestHeight)
-			if err != nil {
-				return fmt.Errorf("failed to load validators: %w", err)
-			}
-
-			lastFinalizeBlockResponse, err := stateStore.LoadFinalizeBlockResponse(newLatestHeight)
-			if err != nil {
-				return fmt.Errorf("failed to load finalize block response: %w", err)
-			}
-
-			// Delete the latest state using the official API
-			err = stateStore.PruneStates(newLatestHeight, currentHeight, currentHeight) // Prune only the current height
+			err := DeleteLatestState(homeDir, backendType, cmd)
 			if err != nil {
 				return fmt.Errorf("failed to delete latest state: %w", err)
 			}
 
-			latestState.AppHash = lastFinalizeBlockResponse.AppHash
-			latestState.LastBlockHeight = newLatestHeight
-			latestState.LastBlockID = currentBlock.LastBlockID
-			latestState.LastBlockTime = lastBlockProto.Header.Time
-			latestState.Validators = validators
-			latestState.LastValidators = validators
-			latestState.NextValidators = validators
-			latestState.LastHeightValidatorsChanged = newLatestHeight
-			latestState.ConsensusParams = latestState.ConsensusParams.Update(lastFinalizeBlockResponse.ConsensusParamUpdates)
-			latestState.LastHeightConsensusParamsChanged = newLatestHeight
-			latestState.LastResultsHash = lastBlockProto.Header.LastResultsHash
-			latestState.AppHash = lastFinalizeBlockResponse.AppHash
-
-			err = stateStore.Save(latestState)
-			if err != nil {
-				return fmt.Errorf("failed to save latest state: %w", err)
-			}
-
-			fmt.Println("validators", validators)
-
-			cmd.Printf("Successfully deleted state at height %d.\n", currentHeight)
 			return nil
 		},
 	}
@@ -566,4 +459,142 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func DeleteLatestState(homeDir string, backendType string, cmd *cobra.Command) error {
+	// Get the latest state to see what will be deleted
+	db, err := openDBState(homeDir, cometdbm.BackendType(backendType))
+	if err != nil {
+		return fmt.Errorf("failed to open state database: %w", err)
+	}
+	stateStore := sm.NewStore(db, sm.StoreOptions{})
+	latestState, err := stateStore.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load latest state: %w", err)
+	}
+	currentHeight := latestState.LastBlockHeight
+	newLatestHeight := currentHeight - 1
+	db.Close()
+	// ------------------------------------------------------------
+
+	blockstoreDB, err := openDBBlockStore(homeDir, dbm.BackendType(backendType))
+	if err != nil {
+		return fmt.Errorf("failed to open blockstore database: %w", err)
+	}
+
+	lastBlock, err := GetBlock(blockstoreDB, newLatestHeight)
+	if err != nil {
+		return fmt.Errorf("failed to load block: %w", err)
+	}
+	lastBlockProto, err := lastBlock.ToProto()
+	if err != nil {
+		return fmt.Errorf("failed to convert block to proto: %w", err)
+	}
+	currentBlock, err := GetBlock(blockstoreDB, currentHeight)
+	if err != nil {
+		return fmt.Errorf("failed to load block: %w", err)
+	}
+	// currentBlockProto, err := currentBlock.ToProto()
+	// if err != nil {
+	// 	return fmt.Errorf("failed to convert block to proto: %w", err)
+	// }
+
+	db, err = openDBState(homeDir, cometdbm.BackendType(backendType))
+	if err != nil {
+		return fmt.Errorf("failed to open state database: %w", err)
+	}
+	defer db.Close()
+
+	// Get the latest state to see what will be deleted
+	stateStore = sm.NewStore(db, sm.StoreOptions{})
+	latestState, err = stateStore.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load latest state: %w", err)
+	}
+
+	if latestState.LastBlockHeight == 0 {
+		cmd.Println("No state found in the database.")
+		return nil
+	}
+	currentHeight = latestState.LastBlockHeight
+
+	if !hasValidatorsKey(db, currentHeight) {
+		cmd.Printf("Validators key not found at height %d. Deletion cancelled.\n", currentHeight)
+		return nil
+	}
+
+	// Check if force flag is set
+	force, _ := cmd.Flags().GetBool("force")
+
+	if !force {
+		// Ask for confirmation
+		cmd.Printf("WARNING: This will delete the latest state (height: %d) from the statedb.\n", currentHeight)
+		cmd.Printf("This operation cannot be undone. Are you sure you want to continue? (y/N): ")
+
+		var response string
+		fmt.Scanln(&response)
+		if response != "y" && response != "Y" {
+			cmd.Println("Deletion cancelled.")
+			return nil
+		}
+	}
+
+	validators, err := stateStore.LoadValidators(newLatestHeight)
+	if err != nil {
+		return fmt.Errorf("failed to load validators: %w", err)
+	}
+
+	lastFinalizeBlockResponse, err := stateStore.LoadFinalizeBlockResponse(newLatestHeight)
+	if err != nil {
+		return fmt.Errorf("failed to load finalize block response: %w", err)
+	}
+
+	// Delete the latest state using the official API
+	err = stateStore.PruneStates(newLatestHeight, currentHeight, currentHeight) // Prune only the current height
+	if err != nil {
+		return fmt.Errorf("failed to delete latest state: %w", err)
+	}
+
+	err = stateStore.ReplaceLastFinalizeBlockResponse(newLatestHeight, lastFinalizeBlockResponse)
+	if err != nil {
+		return fmt.Errorf("failed to replace last finalize block response: %w", err)
+	}
+
+	latestState.AppHash = lastFinalizeBlockResponse.AppHash
+	latestState.LastBlockHeight = newLatestHeight
+	latestState.LastBlockID = currentBlock.LastBlockID
+	latestState.LastBlockTime = lastBlockProto.Header.Time
+	latestState.Validators = validators
+	latestState.LastValidators = validators
+	latestState.NextValidators = validators
+	latestState.LastHeightValidatorsChanged = newLatestHeight - 1
+	latestState.ConsensusParams = latestState.ConsensusParams.Update(lastFinalizeBlockResponse.ConsensusParamUpdates)
+	latestState.LastHeightConsensusParamsChanged = newLatestHeight + 1
+	latestState.LastResultsHash = lastBlockProto.Header.LastResultsHash
+	latestState.AppHash = lastFinalizeBlockResponse.AppHash
+
+	err = stateStore.Save(latestState)
+	if err != nil {
+		return fmt.Errorf("failed to save latest state: %w", err)
+	}
+
+	// remise à zero du fichier priv_validator_state.json
+	newPrivValidatorState := map[string]interface{}{
+		"height": "0",
+		"round":  0,
+		"step":   0,
+	}
+	privValidatorStatePath := filepath.Join(homeDir, "priv_validator_state.json")
+	json, err := json.MarshalIndent(newPrivValidatorState, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal priv_validator_state.json: %w", err)
+	}
+	err = os.WriteFile(privValidatorStatePath, json, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write priv_validator_state.json: %w", err)
+	}
+	///////////////////////////////////////////////////////////
+
+	cmd.Printf("Successfully deleted state at height %d.\n", currentHeight)
+	return nil
 }

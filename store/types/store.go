@@ -157,8 +157,8 @@ type MultiStore interface {
 // From MultiStore.CacheMultiStore()....
 type CacheMultiStore interface {
 	MultiStore
-	Write() // Writes operations to underlying KVStore
-	Copy() CacheMultiStore  // Returns a deep copy of the CacheMultiStore
+	Write()                // Writes operations to underlying KVStore
+	Copy() CacheMultiStore // Returns a deep copy of the CacheMultiStore
 }
 
 // CommitMultiStore is an interface for a MultiStore without cache capabilities.
@@ -213,6 +213,18 @@ type CommitMultiStore interface {
 
 	// RollbackToVersion rollback the db to specific version(height).
 	RollbackToVersion(version int64) error
+
+	// PruneVersion prune the db to specific version(height).
+	PruneVersion(version int64) error
+
+	// DeleteVersions delete the versions from the db.
+	DeleteVersions(versions []int64) error
+
+	// DeleteVersionsRange delete the versions from the db.
+	DeleteVersionsRange(start, end int64) error
+
+	// DeleteFromBaseVersionTo delete the versions from the db.
+	DeleteFromBaseVersionTo(version int64) error
 
 	// ListeningEnabled returns if listening is enabled for the KVStore belonging the provided StoreKey
 	ListeningEnabled(key StoreKey) bool

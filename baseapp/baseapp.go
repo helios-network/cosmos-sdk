@@ -163,6 +163,9 @@ type BaseApp struct {
 	// ResponseCommit.RetainHeight.
 	minRetainBlocks uint64
 
+	// skipEvidenceRetention defines if the evidence retention should be skipped
+	skipEvidenceRetention bool
+
 	// application's version string
 	version string
 
@@ -463,6 +466,10 @@ func (app *BaseApp) setMinRetainBlocks(minRetainBlocks uint64) {
 	app.minRetainBlocks = minRetainBlocks
 }
 
+func (app *BaseApp) setSkipEvidenceRetention(skipEvidenceRetention bool) {
+	app.skipEvidenceRetention = skipEvidenceRetention
+}
+
 func (app *BaseApp) setInterBlockCache(cache storetypes.MultiStorePersistentCache) {
 	app.interBlockCache = cache
 }
@@ -520,6 +527,11 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 	default:
 		panic(fmt.Sprintf("invalid runTxMode for setState: %d", mode))
 	}
+}
+
+func (app *BaseApp) pruneApplication(retainHeight int64) {
+	app.logger.Info("pruning application")
+	app.cms.DeleteFromBaseVersionTo(retainHeight)
 }
 
 // SetCircuitBreaker sets the circuit breaker for the BaseApp.

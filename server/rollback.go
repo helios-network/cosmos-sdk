@@ -1,7 +1,10 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	cmtcmd "github.com/cometbft/cometbft/cmd/cometbft/commands"
 	"github.com/spf13/cobra"
@@ -13,6 +16,7 @@ import (
 // NewRollbackCmd creates a command to rollback CometBFT and multistore state by one height.
 func NewRollbackCmd(appCreator types.AppCreator, defaultNodeHome string) *cobra.Command {
 	var removeBlock bool
+	var deleteLatestState bool
 
 	cmd := &cobra.Command{
 		Use:   "rollback",
@@ -45,6 +49,23 @@ application.
 				return fmt.Errorf("failed to rollback to version: %w", err)
 			}
 
+			if deleteLatestState {
+
+				newPrivValidatorState := map[string]interface{}{
+					"height": "0",
+					"round":  0,
+					"step":   0,
+				}
+				privValidatorStatePath := filepath.Join(home, "data/priv_validator_state.json")
+				json, err := json.MarshalIndent(newPrivValidatorState, "", "  ")
+				if err != nil {
+					return fmt.Errorf("failed to marshal priv_validator_state.json: %w", err)
+				}
+				err = os.WriteFile(privValidatorStatePath, json, 0644)
+				if err != nil {
+					return fmt.Errorf("failed to write priv_validator_state.json: %w", err)
+				}
+			}
 			fmt.Printf("Rolled back state to height %d and hash %X", height, hash)
 			return nil
 		},
@@ -52,5 +73,6 @@ application.
 
 	cmd.Flags().String(flags.FlagHome, defaultNodeHome, "The application home directory")
 	cmd.Flags().BoolVar(&removeBlock, "hard", false, "remove last block as well as state")
+	cmd.Flags().BoolVar(&deleteLatestState, "delete-latest-state", false, "delete latest state")
 	return cmd
 }

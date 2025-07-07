@@ -432,45 +432,10 @@ func deleteLatestBlockCmd(defaultNodeHome string) *cobra.Command {
 				backendType = "goleveldb" // default backend
 			}
 
-			db, err := openDBBlockStore(homeDir, dbm.BackendType(backendType))
-			if err != nil {
-				return fmt.Errorf("failed to open blockstore: %w", err)
-			}
-			defer db.Close()
-
-			blockStore := bs.NewBlockStore(db)
-
-			// Get current height before deletion
-			currentHeight := blockStore.Height()
-			if currentHeight == 0 {
-				cmd.Printf("Blockstore is empty. No blocks to delete.\n")
-				return nil
-			}
-
-			// Check if force flag is set
-			force, _ := cmd.Flags().GetBool("force")
-
-			if !force {
-				// Ask for confirmation
-				cmd.Printf("WARNING: This will delete the latest block (height: %d) from the blockstore.\n", currentHeight)
-				cmd.Printf("This operation cannot be undone. Are you sure you want to continue? (y/N): ")
-
-				var response string
-				fmt.Scanln(&response)
-				if response != "y" && response != "Y" {
-					cmd.Println("Deletion cancelled.")
-					return nil
-				}
-			}
-
-			// Delete the latest block
-			err = blockStore.DeleteLatestBlock()
+			err := DeleteLatestBlock(homeDir, backendType, cmd)
 			if err != nil {
 				return fmt.Errorf("failed to delete latest block: %w", err)
 			}
-
-			cmd.Printf("Successfully deleted block at height %d.\n", currentHeight)
-			cmd.Printf("New latest height: %d\n", blockStore.Height())
 			return nil
 		},
 	}
@@ -486,4 +451,47 @@ func GetBlock(db cometdbm.DB, height int64) (*tenderminttypes.Block, error) {
 	blockStore := bs.NewBlockStore(db)
 	block := blockStore.LoadBlock(height)
 	return block, nil
+}
+
+func DeleteLatestBlock(homeDir string, backendType string, cmd *cobra.Command) error {
+	db, err := openDBBlockStore(homeDir, dbm.BackendType(backendType))
+	if err != nil {
+		return fmt.Errorf("failed to open blockstore: %w", err)
+	}
+	defer db.Close()
+
+	blockStore := bs.NewBlockStore(db)
+
+	// Get current height before deletion
+	currentHeight := blockStore.Height()
+	if currentHeight == 0 {
+		cmd.Printf("Blockstore is empty. No blocks to delete.\n")
+		return nil
+	}
+
+	// Check if force flag is set
+	force, _ := cmd.Flags().GetBool("force")
+
+	if !force {
+		// Ask for confirmation
+		cmd.Printf("WARNING: This will delete the latest block (height: %d) from the blockstore.\n", currentHeight)
+		cmd.Printf("This operation cannot be undone. Are you sure you want to continue? (y/N): ")
+
+		var response string
+		fmt.Scanln(&response)
+		if response != "y" && response != "Y" {
+			cmd.Println("Deletion cancelled.")
+			return nil
+		}
+	}
+
+	// Delete the latest block
+	err = blockStore.DeleteLatestBlock()
+	if err != nil {
+		return fmt.Errorf("failed to delete latest block: %w", err)
+	}
+
+	cmd.Printf("Successfully deleted block at height %d.\n", currentHeight)
+	cmd.Printf("New latest height: %d\n", blockStore.Height())
+	return nil
 }
