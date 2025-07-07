@@ -379,7 +379,7 @@ func (v Validator) AddTokensFromDel(amount math.Int) (Validator, math.LegacyDec)
 		// the first delegation to a validator sets the exchange rate to one
 		issuedShares = math.LegacyNewDecFromInt(amount)
 	} else {
-		shares, err := v.SharesFromTokens(amount)
+		shares, err := v.SharesFromTokensTruncated(amount)
 		if err != nil {
 			panic(err)
 		}
@@ -423,11 +423,11 @@ func (v Validator) RemoveDelShares(delShares math.LegacyDec) (Validator, math.In
 	} else {
 		// leave excess tokens in the validator
 		// however fully use all the delegator shares
-		issuedTokens = v.TokensFromShares(delShares).TruncateInt()
+		issuedTokens = v.TokensFromSharesTruncated(delShares).TruncateInt()
 		v.Tokens = v.Tokens.Sub(issuedTokens)
 
 		if v.Tokens.IsNegative() {
-			panic("attempting to remove more tokens than available in validator")
+			panic("attempting to remove more tokens than available")
 		}
 	}
 

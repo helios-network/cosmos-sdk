@@ -349,13 +349,11 @@ func (k Querier) GetDelegations(ctx context.Context, req *types.QueryGetDelegati
 	delegations := make([]types.Delegation, 0)
 	totalVotingPower := math.LegacyZeroDec()
 	delegatorAddress, err := sdk.AccAddressFromBech32(req.DelegatorAddr)
-
 	if err != nil {
 		return &types.QueryGetDelegationsResponse{Delegations: delegations}, status.Error(codes.InvalidArgument, "delegator address parsing failed")
 	}
 	// iterate over all delegations from voter, deduct from any delegated-to validators
 	err = k.IterateDelegations(ctx, delegatorAddress, func(index int64, delegation types.DelegationI) (stop bool) {
-
 		votingPower := delegation.GetShares() //.MulInt(val.BondedTokens).Quo(val.DelegatorShares)
 		totalVotingPower = totalVotingPower.Add(votingPower)
 
@@ -604,7 +602,6 @@ func (k Querier) TotalBoostedValidator(ctx context.Context, req *types.QueryTota
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	weightedTotalBoost, err := k.ConvertAssetToSDKCoin(sdkCtx, sdk.DefaultBondDenom, totalBoost.TruncateInt())
-
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -1231,7 +1228,7 @@ func (k Keeper) GetCurrentEpochHandler(ctx context.Context, req *types.QueryCurr
 		CurrentEpoch:       currentEpoch,
 		EpochLength:        epochLength,
 		LastEpochHeight:    lastEpochHeight,
-		ValidatorsPerEpoch:  validatorsPerEpoch,
+		ValidatorsPerEpoch: validatorsPerEpoch,
 		EpochEnabled:       epochEnabled,
 	}, nil
 }

@@ -1457,7 +1457,7 @@ func (k Keeper) Unbond(
 	// If the delegation is the operator of the validator and undelegating will decrease the validator's
 	// self-delegation below their minimum, we jail the validator.
 	if isValidatorOperator && !validator.Jailed &&
-		validator.TokensFromShares(delegation.Shares).TruncateInt().LT(validator.MinSelfDelegation) {
+		validator.TokensFromSharesTruncated(delegation.Shares).TruncateInt().LT(validator.MinSelfDelegation) {
 		err = k.jailValidator(ctx, validator)
 		if err != nil {
 			return amount, err
@@ -1835,7 +1835,7 @@ func (k Keeper) ValidateUnbondAmount(
 		return shares, err
 	}
 
-	shares, err = validator.SharesFromTokens(amt)
+	shares, err = validator.SharesFromTokensTruncated(amt)
 	if err != nil {
 		return shares, err
 	}
@@ -1847,16 +1847,14 @@ func (k Keeper) ValidateUnbondAmount(
 
 	delShares := del.GetShares()
 	if sharesTruncated.GT(delShares) {
-		return shares, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "invalid shares amount")
+		return shares, errorsmod.Wrap(
+			sdkerrors.ErrInvalidRequest,
+			"invalid shares amount",
+		)
 	}
 
-	// Cap the shares at the delegation's shares. Shares being greater could occur
-	// due to rounding, however we don't want to truncate the shares or take the
-	// minimum because we want to allow for the full withdraw of shares from a
-	// delegation.
-	if shares.GT(delShares) {
-		shares = delShares
-	}
+	// shares to be added to a delegation
+	shares = sharesTruncated
 
 	return shares, nil
 }

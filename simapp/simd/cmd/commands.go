@@ -120,6 +120,8 @@ func initRootCmd(
 		db.BlockstoreCmd(newApp, simapp.DefaultNodeHome),
 		db.StatedbCmd(newApp, simapp.DefaultNodeHome),
 		db.ValidateCmd(simapp.DefaultNodeHome),
+		db.ExportDataCmd(simapp.DefaultNodeHome),
+		db.ImportStateCmd(simapp.DefaultNodeHome),
 		snapshot.Cmd(newApp),
 	)
 

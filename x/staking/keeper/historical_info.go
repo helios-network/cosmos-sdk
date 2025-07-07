@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	storetypes "cosmossdk.io/store/types"
 
@@ -122,10 +123,25 @@ func (k Keeper) TrackHistoricalInfo(ctx context.Context) error {
 		return err
 	}
 
+<<<<<<< Updated upstream
 	// Calculate asset weights for each validator
 	for i, val := range lastVals {
 		totalAssetWeights, err := k.GetValidatorAssetWeightsFromDelegations(ctx, val)
 		if err != nil {
+=======
+	inactiveVals, err := k.GetInactiveValidatorsWithDelegations(ctx)
+	if err != nil {
+		return err
+	}
+
+	useOptimized := k.shouldUseOptimizedAssetWeights(sdkCtx)
+
+	// Calculate asset weights for active validators (top 100)
+	for i, val := range activeVals {
+		if useOptimized && len(val.TotalAssetWeights) > 0 {
+			fmt.Println("Asset weights already pre-calculated and cached - skip expensive calculation")
+			// Asset weights already pre-calculated and cached - skip expensive calculation
+>>>>>>> Stashed changes
 			continue
 		}
 		// Update the validator with its asset weights
@@ -133,7 +149,30 @@ func (k Keeper) TrackHistoricalInfo(ctx context.Context) error {
 		lastVals[i] = val
 	}
 
+<<<<<<< Updated upstream
 	historicalEntry := types.NewHistoricalInfo(sdkCtx.BlockHeader(), types.Validators{Validators: lastVals, ValidatorCodec: k.validatorAddressCodec}, k.PowerReduction(ctx))
+=======
+	// Calculate asset weights for inactive validators (those with delegations but not in top 100)
+	for i, val := range inactiveVals {
+		if useOptimized && len(val.TotalAssetWeights) > 0 {
+			fmt.Println("Asset weights already pre-calculated and cached - skip expensive calculation")
+			// Asset weights already pre-calculated and cached - skip expensive calculation
+			continue
+		}
+		// No cached weights available - calculate from all delegations (expensive)
+		weights, err := k.GetValidatorAssetWeightsFromDelegations(ctx, val)
+		if err == nil {
+			inactiveVals[i].TotalAssetWeights = weights
+		}
+	}
+
+	historicalEntry := types.NewHistoricalInfoWithInactiveValidators(
+		sdkCtx.BlockHeader(),
+		types.Validators{Validators: activeVals, ValidatorCodec: k.validatorAddressCodec},
+		types.Validators{Validators: inactiveVals, ValidatorCodec: k.validatorAddressCodec},
+		k.PowerReduction(ctx),
+	)
+>>>>>>> Stashed changes
 
 	// Set latest HistoricalInfo at current height
 	return k.SetHistoricalInfo(ctx, sdkCtx.BlockHeight(), &historicalEntry)
