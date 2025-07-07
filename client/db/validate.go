@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"cosmossdk.io/store/rootmulti"
 	cometdbm "github.com/cometbft/cometbft-db"
 	sm "github.com/cometbft/cometbft/state"
 	dbm "github.com/cosmos/cosmos-db"
@@ -77,19 +76,12 @@ func validateCoherence(cmd *cobra.Command, appDB dbm.DB, blockDB cometdbm.DB, st
 		return fmt.Errorf("height %d beyond current state height %d", height, currentState.LastBlockHeight)
 	}
 
-	versions := rootmulti.GetAllVersions(appDB)
-	if len(versions) == 0 {
-		return fmt.Errorf("application database empty")
+	cInfoKey := fmt.Sprintf("s/%d", height)
+	cInfoBytes, err := appDB.Get([]byte(cInfoKey))
+	if err != nil {
+		return fmt.Errorf("failed to check version %d in application db: %w", height, err)
 	}
-
-	found := false
-	for _, v := range versions {
-		if v == height {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if cInfoBytes == nil {
 		return fmt.Errorf("height %d not found in application database", height)
 	}
 
