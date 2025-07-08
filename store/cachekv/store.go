@@ -161,6 +161,44 @@ func (store *Store) Write() {
 	}
 }
 
+func (store *Store) DumpTrace() types.TraceCommit {
+
+	traceCommit := types.TraceCommit{
+		StoreType:   store.parent.GetStoreType(),
+		CacheSorted: make(map[string]*types.CValue),
+	}
+
+	if len(store.cache) == 0 && len(store.unsortedCache) == 0 {
+		store.sortedCache = internal.NewBTree()
+		return traceCommit
+	}
+
+	type cEntry struct {
+		key string
+		val *types.CValue
+	}
+
+	// We need a copy of all of the keys.
+	// Not the best. To reduce RAM pressure, we copy the values as well
+	// and clear out the old caches right after the copy.
+	sortedCache := make([]cEntry, 0, len(store.cache))
+
+	for key, dbValue := range store.cache {
+		if dbValue.dirty {
+			sortedCache = append(sortedCache, cEntry{key, &types.CValue{
+				Value: dbValue.value,
+			}})
+		}
+	}
+	sort.Slice(sortedCache, func(i, j int) bool {
+		return sortedCache[i].key < sortedCache[j].key
+	})
+	for _, obj := range sortedCache {
+		traceCommit.CacheSorted[obj.key] = obj.val
+	}
+	return traceCommit
+}
+
 // Copy creates a deep copy of the Store object
 func (store *Store) Copy() types.CacheKVStore {
 	store.mtx.Lock()

@@ -127,6 +127,19 @@ func (cms Store) Write() {
 	}
 }
 
+func (cms Store) DumpTrace() []types.TraceCommit {
+	traceCommits := []types.TraceCommit{}
+	traceCommits = append(traceCommits, cms.db.DumpTrace())
+	for _, store := range cms.stores {
+		cacheStore, ok := store.(*cachekv.Store)
+		if ok {
+			traceCommit := cacheStore.DumpTrace()
+			traceCommits = append(traceCommits, traceCommit)
+		}
+	}
+	return traceCommits
+}
+
 // Implements CacheWrapper.
 func (cms Store) CacheWrap() types.CacheWrap {
 	return cms.CacheMultiStore().(types.CacheWrap)
@@ -168,7 +181,6 @@ func (cms Store) GetKVStore(key types.StoreKey) types.KVStore {
 	}
 	return store.(types.KVStore)
 }
-
 
 // Copy creates a deep copy of the Store object
 func (cms Store) Copy() types.CacheMultiStore {

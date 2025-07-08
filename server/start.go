@@ -75,9 +75,14 @@ const (
 	FlagDisableIAVLFastNode = "iavl-disable-fastnode"
 	FlagShutdownGrace       = "shutdown-grace"
 
+	FlagSkipEvidenceRetention = "skip-evidence-retention"
+
 	// state sync-related flags
 	FlagStateSyncSnapshotInterval   = "state-sync.snapshot-interval"
 	FlagStateSyncSnapshotKeepRecent = "state-sync.snapshot-keep-recent"
+
+	// trace-related flags
+	FlagDumpCommitDebugExecutionTrace = "dump-commit-debug-execution-trace"
 
 	// api-related flags
 	FlagAPIEnable             = "api.enable"
@@ -968,6 +973,7 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Uint64(FlagPruningInterval, 0, "Height interval at which pruned heights are removed from disk (ignored if pruning is not 'custom')")
 	cmd.Flags().Uint(FlagInvCheckPeriod, 0, "Assert registered invariants every N blocks")
 	cmd.Flags().Uint64(FlagMinRetainBlocks, 0, "Minimum block height offset during ABCI commit to prune CometBFT blocks")
+	cmd.Flags().Bool(FlagSkipEvidenceRetention, false, "Skip evidence retention")
 	cmd.Flags().Bool(FlagAPIEnable, false, "Define if the API server should be enabled")
 	cmd.Flags().Bool(FlagAPISwagger, false, "Define if swagger documentation should automatically be registered (Note: the API must also be enabled)")
 	cmd.Flags().String(FlagAPIAddress, serverconfig.DefaultAPIAddress, "the API server address to listen on")
@@ -985,6 +991,7 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Bool(FlagDisableIAVLFastNode, false, "Disable fast node for IAVL tree")
 	cmd.Flags().Int(FlagMempoolMaxTxs, mempool.DefaultMaxTx, "Sets MaxTx value for the app-side mempool")
 	cmd.Flags().Duration(FlagShutdownGrace, 0*time.Second, "On Shutdown, duration to wait for resource clean up")
+	cmd.Flags().Bool(FlagDumpCommitDebugExecutionTrace, false, "Dump commit debug storage commit execution trace")
 
 	// support old flags name for backwards compatibility
 	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {

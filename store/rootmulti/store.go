@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -35,6 +36,7 @@ import (
 const (
 	latestVersionKey = "s/latest"
 	commitInfoKeyFmt = "s/%d" // s/<version>
+	baseVersionKey   = "s/base"
 )
 
 const iavlDisablefastNodeDefault = false
@@ -1104,6 +1106,18 @@ func (rs *Store) RollbackToVersion(target int64) error {
 	return rs.LoadLatestVersion()
 }
 
+func (rs *Store) PruneVersion(version int64) error {
+	if version <= 0 {
+		return fmt.Errorf("invalid PruneVersion height version: %d", version)
+	}
+	err := rs.PruneStores(version)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // SetCommitHeader sets the commit block header of the store.
 func (rs *Store) SetCommitHeader(h cmtproto.Header) {
 	rs.commitHeader = h
@@ -1184,6 +1198,49 @@ func GetLatestVersion(db dbm.DB) int64 {
 	return latestVersion
 }
 
+func GetBaseVersion(db dbm.DB) int64 {
+	bz, err := db.Get([]byte(baseVersionKey))
+	if err != nil {
+		return 0
+	}
+
+	var baseVersion int64
+	if err := gogotypes.StdInt64Unmarshal(&baseVersion, bz); err != nil {
+		return 0
+	}
+
+	return baseVersion
+}
+
+func GetAllVersions(db dbm.DB) []int64 {
+	versions := []int64{}
+
+	latestVersion := GetLatestVersion(db)
+
+	// iterate over all the keys in the db
+	cInfoKey := fmt.Sprintf(commitInfoKeyFmt, latestVersion)
+	iter, err := db.ReverseIterator(nil, []byte(cInfoKey))
+	if err != nil {
+		panic(err)
+	}
+	defer iter.Close()
+	for iter.Valid() {
+		var version int64
+
+		if err := gogotypes.StdInt64Unmarshal(&version, iter.Value()); err != nil {
+			iter.Next()
+			continue
+		}
+		versions = append(versions, version)
+		if len(versions) >= 100 {
+			break
+		}
+		iter.Next()
+	}
+
+	return versions
+}
+
 // Commits each store and returns a new commitInfo.
 func commitStores(version int64, storeMap map[types.StoreKey]types.CommitKVStore, removalMap map[types.StoreKey]bool) *types.CommitInfo {
 	storeInfos := make([]types.StoreInfo, 0, len(storeMap))
@@ -1250,4 +1307,119 @@ func flushLatestVersion(batch dbm.Batch, version int64) {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func flushBaseVersion(batch dbm.Batch, version int64) {
+	bz, err := gogotypes.StdInt64Marshal(version)
+	if err != nil {
+		panic(err)
+	}
+
+	err = batch.Set([]byte(baseVersionKey), bz)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// DeleteVersions permanently deletes the specified versions from the application database.
+// This removes the s/<version> keys and updates s/latest if necessary.
+// WARNING: This is a destructive operation that cannot be undone.
+func (rs *Store) DeleteVersions(versions []int64) error {
+	if len(versions) == 0 {
+		return nil
+	}
+
+	// Sort versions to ensure we process them in order
+	sort.Slice(versions, func(i, j int) bool {
+		return versions[i] < versions[j]
+	})
+
+	latestVersion := GetLatestVersion(rs.db)
+	batch := rs.db.NewBatch()
+	defer func() {
+		_ = batch.Close()
+	}()
+
+	if slices.Contains(versions, latestVersion) {
+		return fmt.Errorf("latest version is not allowed to be deleted")
+	}
+
+	// Delete each version's commit info
+	for _, version := range versions {
+		if version <= 0 {
+			return fmt.Errorf("invalid version to delete: %d", version)
+		}
+
+		err := rs.PruneStores(version)
+		if err != nil {
+			return err
+		}
+
+		cInfoKey := fmt.Sprintf(commitInfoKeyFmt, version)
+		err = batch.Delete([]byte(cInfoKey))
+		if err != nil {
+			return fmt.Errorf("failed to delete commit info for version %d: %w", version, err)
+		}
+
+		rs.logger.Debug("deleted version from application database", "version", version)
+	}
+
+	// Write all changes
+	if err := batch.WriteSync(); err != nil {
+		return fmt.Errorf("failed to write batch: %w", err)
+	}
+
+	return nil
+}
+
+func (rs *Store) DeleteFromBaseVersionTo(version int64) error {
+	if version <= 0 {
+		return fmt.Errorf("invalid version to delete: %d", version)
+	}
+
+	// check key s/base
+	baseVersion := GetBaseVersion(rs.db)
+	if baseVersion == 0 {
+		baseVersion = 1 // for the first time, we set the base version to 1
+	}
+
+	if baseVersion > version {
+		return fmt.Errorf("base version is greater than the version to delete: %d > %d", baseVersion, version)
+	}
+
+	err := rs.DeleteVersionsRange(baseVersion, version)
+
+	if err != nil {
+		return err
+	}
+
+	batch := rs.db.NewBatch()
+	defer func() {
+		_ = batch.Close()
+	}()
+
+	flushBaseVersion(batch, version)
+
+	if err := batch.WriteSync(); err != nil {
+		panic(fmt.Errorf("error on batch write %w", err))
+	}
+	return nil
+}
+
+// DeleteVersionsRange permanently deletes all versions in the specified range [start, end].
+// This is equivalent to calling DeleteVersions with all versions from start to end.
+func (rs *Store) DeleteVersionsRange(start, end int64) error {
+	if start <= 0 || end <= 0 {
+		return fmt.Errorf("invalid range: start=%d, end=%d", start, end)
+	}
+	if start > end {
+		return fmt.Errorf("invalid range: start (%d) > end (%d)", start, end)
+	}
+
+	var versions []int64
+	for v := start; v <= end; v++ {
+		versions = append(versions, v)
+	}
+
+	return rs.DeleteVersions(versions)
 }

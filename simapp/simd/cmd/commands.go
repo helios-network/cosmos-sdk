@@ -15,6 +15,7 @@ import (
 	confixcmd "cosmossdk.io/tools/confix/cmd"
 
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/db"
 	"github.com/cosmos/cosmos-sdk/client/debug"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/client/keys"
@@ -115,6 +116,10 @@ func initRootCmd(
 		debug.Cmd(),
 		confixcmd.ConfigCommand(),
 		pruning.Cmd(newApp, simapp.DefaultNodeHome),
+		db.Cmd(newApp, simapp.DefaultNodeHome),
+		db.BlockstoreCmd(newApp, simapp.DefaultNodeHome),
+		db.StatedbCmd(newApp, simapp.DefaultNodeHome),
+		db.ValidateCmd(simapp.DefaultNodeHome),
 		snapshot.Cmd(newApp),
 	)
 

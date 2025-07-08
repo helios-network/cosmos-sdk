@@ -157,8 +157,9 @@ type MultiStore interface {
 // From MultiStore.CacheMultiStore()....
 type CacheMultiStore interface {
 	MultiStore
-	Write() // Writes operations to underlying KVStore
-	Copy() CacheMultiStore  // Returns a deep copy of the CacheMultiStore
+	Write()                // Writes operations to underlying KVStore
+	Copy() CacheMultiStore // Returns a deep copy of the CacheMultiStore
+	// DumpTrace()            // Dump the trace to a cache to one file backup-cache.trace
 }
 
 // CommitMultiStore is an interface for a MultiStore without cache capabilities.
@@ -213,6 +214,18 @@ type CommitMultiStore interface {
 
 	// RollbackToVersion rollback the db to specific version(height).
 	RollbackToVersion(version int64) error
+
+	// PruneVersion prune the db to specific version(height).
+	PruneVersion(version int64) error
+
+	// DeleteVersions delete the versions from the db.
+	DeleteVersions(versions []int64) error
+
+	// DeleteVersionsRange delete the versions from the db.
+	DeleteVersionsRange(start, end int64) error
+
+	// DeleteFromBaseVersionTo delete the versions from the db.
+	DeleteFromBaseVersionTo(version int64) error
 
 	// ListeningEnabled returns if listening is enabled for the KVStore belonging the provided StoreKey
 	ListeningEnabled(key StoreKey) bool
@@ -275,6 +288,20 @@ type KVStore interface {
 // Iterator is an alias db's Iterator for convenience.
 type Iterator = dbm.Iterator
 
+type CValue struct {
+	Value []byte
+}
+
+type TraceCommit struct {
+	StoreType   StoreType
+	CacheSorted map[string]*CValue
+}
+
+type Trace struct {
+	Height  int64
+	Commits []TraceCommit
+}
+
 // CacheKVStore branches a KVStore and provides read cache functionality.
 // After calling .Write() on the CacheKVStore, all previously created
 // CacheKVStores on the object expire.
@@ -286,6 +313,9 @@ type CacheKVStore interface {
 
 	// Copy operations to underlying KVStore
 	Copy() CacheKVStore
+
+	// Dump the trace to a cache to one file backup-cache.trace
+	DumpTrace() TraceCommit
 }
 
 // CommitKVStore is an interface for MultiStore.
