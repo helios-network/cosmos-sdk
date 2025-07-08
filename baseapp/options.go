@@ -76,6 +76,14 @@ func SetSkipEvidenceRetention(skipEvidenceRetention bool) func(*BaseApp) {
 	return func(bapp *BaseApp) { bapp.setSkipEvidenceRetention(skipEvidenceRetention) }
 }
 
+func SetDumpCommitDebugExecutionTrace(dumpCommitDebugExecutionTrace bool) func(*BaseApp) {
+	return func(bapp *BaseApp) { bapp.setDumpCommitDebugExecutionTrace(dumpCommitDebugExecutionTrace) }
+}
+
+func SetTraceDB(traceDB dbm.DB) func(*BaseApp) {
+	return func(bapp *BaseApp) { bapp.setTraceDB(traceDB) }
+}
+
 // SetTrace will turn on or off trace flag
 func SetTrace(trace bool) func(*BaseApp) {
 	return func(app *BaseApp) { app.setTrace(trace) }

@@ -159,6 +159,7 @@ type CacheMultiStore interface {
 	MultiStore
 	Write()                // Writes operations to underlying KVStore
 	Copy() CacheMultiStore // Returns a deep copy of the CacheMultiStore
+	// DumpTrace()            // Dump the trace to a cache to one file backup-cache.trace
 }
 
 // CommitMultiStore is an interface for a MultiStore without cache capabilities.
@@ -287,6 +288,20 @@ type KVStore interface {
 // Iterator is an alias db's Iterator for convenience.
 type Iterator = dbm.Iterator
 
+type CValue struct {
+	Value []byte
+}
+
+type TraceCommit struct {
+	StoreType   StoreType
+	CacheSorted map[string]*CValue
+}
+
+type Trace struct {
+	Height  int64
+	Commits []TraceCommit
+}
+
 // CacheKVStore branches a KVStore and provides read cache functionality.
 // After calling .Write() on the CacheKVStore, all previously created
 // CacheKVStores on the object expire.
@@ -298,6 +313,9 @@ type CacheKVStore interface {
 
 	// Copy operations to underlying KVStore
 	Copy() CacheKVStore
+
+	// Dump the trace to a cache to one file backup-cache.trace
+	DumpTrace() TraceCommit
 }
 
 // CommitKVStore is an interface for MultiStore.

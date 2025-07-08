@@ -81,6 +81,9 @@ const (
 	FlagStateSyncSnapshotInterval   = "state-sync.snapshot-interval"
 	FlagStateSyncSnapshotKeepRecent = "state-sync.snapshot-keep-recent"
 
+	// trace-related flags
+	FlagDumpCommitDebugExecutionTrace = "dump-commit-debug-execution-trace"
+
 	// api-related flags
 	FlagAPIEnable             = "api.enable"
 	FlagAPISwagger            = "api.swagger"
@@ -988,6 +991,7 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Bool(FlagDisableIAVLFastNode, false, "Disable fast node for IAVL tree")
 	cmd.Flags().Int(FlagMempoolMaxTxs, mempool.DefaultMaxTx, "Sets MaxTx value for the app-side mempool")
 	cmd.Flags().Duration(FlagShutdownGrace, 0*time.Second, "On Shutdown, duration to wait for resource clean up")
+	cmd.Flags().Bool(FlagDumpCommitDebugExecutionTrace, false, "Dump commit debug storage commit execution trace")
 
 	// support old flags name for backwards compatibility
 	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {

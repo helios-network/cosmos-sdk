@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"sort"
 	"strconv"
 
@@ -207,6 +208,9 @@ type BaseApp struct {
 	StreamEvents   chan StreamEvents
 
 	traceFlightRecorder *metrics.TraceRecorder
+
+	DumpCommitDebugExecutionTrace bool
+	TraceDB                       dbm.DB
 }
 
 // NewBaseApp returns a reference to an initialized BaseApp. It accepts a
@@ -468,6 +472,14 @@ func (app *BaseApp) setMinRetainBlocks(minRetainBlocks uint64) {
 
 func (app *BaseApp) setSkipEvidenceRetention(skipEvidenceRetention bool) {
 	app.skipEvidenceRetention = skipEvidenceRetention
+}
+
+func (app *BaseApp) setDumpCommitDebugExecutionTrace(dumpCommitDebugExecutionTrace bool) {
+	app.DumpCommitDebugExecutionTrace = dumpCommitDebugExecutionTrace
+}
+
+func (app *BaseApp) setTraceDB(traceDB dbm.DB) {
+	app.TraceDB = traceDB
 }
 
 func (app *BaseApp) setInterBlockCache(cache storetypes.MultiStorePersistentCache) {
@@ -1192,4 +1204,9 @@ func (app *BaseApp) Close() error {
 	}
 
 	return errors.Join(errs...)
+}
+
+func (app *BaseApp) OpenTraceCommitDB(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
+	dataDir := filepath.Join(rootDir, "data")
+	return dbm.NewDB("trace", backendType, dataDir)
 }

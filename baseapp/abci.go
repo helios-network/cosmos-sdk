@@ -2,6 +2,7 @@ package baseapp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 
 	coreheader "cosmossdk.io/core/header"
 	errorsmod "cosmossdk.io/errors"
+	"cosmossdk.io/store/cachemulti"
 	"cosmossdk.io/store/rootmulti"
 	snapshottypes "cosmossdk.io/store/snapshots/types"
 	storetypes "cosmossdk.io/store/types"
@@ -993,6 +995,21 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 // state transitions will be flushed to disk and as a result, but we already have
 // an application Merkle root.
 func (app *BaseApp) workingHash() []byte {
+
+	// TODO: mode dump-debug-execution-trace
+	if app.DumpCommitDebugExecutionTrace {
+		traceCommits := app.finalizeBlockState.ms.(cachemulti.Store).DumpTrace()
+		trace := storetypes.Trace{
+			Height:  app.finalizeBlockState.Context().BlockHeight(),
+			Commits: traceCommits,
+		}
+		bz, err := json.Marshal(trace)
+		if err == nil {
+			app.TraceDB.Set([]byte(fmt.Sprintf("trace-%d", app.finalizeBlockState.Context().BlockHeight())), bz)
+		}
+		app.logger.Info("dump commit debug execution trace", "height", app.finalizeBlockState.Context().BlockHeight())
+	}
+
 	// Write the FinalizeBlock state into branched storage and commit the MultiStore.
 	// The write to the FinalizeBlock state writes all state transitions to the root
 	// MultiStore (app.cms) so when Commit() is called it persists those values.
@@ -1293,7 +1310,6 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 // be a need to vary retention for other nodes, e.g. sentry nodes which do not
 // need historical blocks.
 func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
-	fmt.Println("minRetainBlocks", app.minRetainBlocks)
 	// pruning is disabled if minRetainBlocks is zero
 	if app.minRetainBlocks == 0 {
 		return 0
