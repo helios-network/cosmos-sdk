@@ -1008,6 +1008,14 @@ func (app *BaseApp) workingHash() []byte {
 			app.TraceDB.Set([]byte(fmt.Sprintf("trace-%d", app.finalizeBlockState.Context().BlockHeight())), bz)
 		}
 		app.logger.Info("dump commit debug execution trace", "height", app.finalizeBlockState.Context().BlockHeight())
+
+		// delete the trace of the 1000 blocks before the current block
+		// this is to avoid the trace db from growing too large
+		blockToDelete := app.finalizeBlockState.Context().BlockHeight() - 1000
+		if has, err := app.TraceDB.Has([]byte(fmt.Sprintf("trace-%d", blockToDelete))); err == nil && has {
+			app.TraceDB.Delete([]byte(fmt.Sprintf("trace-%d", blockToDelete)))
+			app.logger.Info("deleted trace", "height", blockToDelete)
+		}
 	}
 
 	// Write the FinalizeBlock state into branched storage and commit the MultiStore.
