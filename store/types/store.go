@@ -294,6 +294,7 @@ type CValue struct {
 
 type TraceCommit struct {
 	StoreType   StoreType
+	StoreName   string
 	CacheSorted map[string]*CValue
 }
 

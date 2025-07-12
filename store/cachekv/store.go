@@ -165,6 +165,7 @@ func (store *Store) DumpTrace() types.TraceCommit {
 
 	traceCommit := types.TraceCommit{
 		StoreType:   store.parent.GetStoreType(),
+		StoreName:   "",
 		CacheSorted: make(map[string]*types.CValue),
 	}
 

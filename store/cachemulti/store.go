@@ -129,12 +129,15 @@ func (cms Store) Write() {
 
 func (cms Store) DumpTrace() []types.TraceCommit {
 	traceCommits := []types.TraceCommit{}
-	traceCommits = append(traceCommits, cms.db.DumpTrace())
-	for _, store := range cms.stores {
+	for key, store := range cms.stores {
 		cacheStore, ok := store.(*cachekv.Store)
 		if ok {
 			traceCommit := cacheStore.DumpTrace()
-			traceCommits = append(traceCommits, traceCommit)
+			traceCommits = append(traceCommits, types.TraceCommit{
+				StoreName:   key.Name(),
+				StoreType:   traceCommit.StoreType,
+				CacheSorted: traceCommit.CacheSorted,
+			})
 		}
 	}
 	return traceCommits
