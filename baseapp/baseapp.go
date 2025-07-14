@@ -211,6 +211,10 @@ type BaseApp struct {
 
 	DumpCommitDebugExecutionTrace bool
 	TraceDB                       dbm.DB
+
+	// Backup system
+	backupManager *BackupManager
+	rootDir       string
 }
 
 // NewBaseApp returns a reference to an initialized BaseApp. It accepts a
@@ -1209,4 +1213,26 @@ func (app *BaseApp) Close() error {
 func (app *BaseApp) OpenTraceCommitDB(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
 	dataDir := filepath.Join(rootDir, "data")
 	return dbm.NewDB("trace", backendType, dataDir)
+}
+
+func (app *BaseApp) SetBackupConfig(enabled bool, blockInterval uint64, backupDir string) {
+	if app.backupManager == nil {
+		app.backupManager = NewBackupManager(app.logger)
+	}
+
+	app.backupManager.Configure(enabled, blockInterval, backupDir, app.rootDir, app.minRetainBlocks, app.cms)
+}
+
+func (app *BaseApp) SetRootDir(rootDir string) {
+	app.rootDir = rootDir
+	if app.backupManager != nil {
+		app.backupManager.Configure(app.backupManager.IsEnabled(), app.backupManager.GetBlockInterval(), app.backupManager.GetBackupDir(), rootDir, app.minRetainBlocks, app.cms)
+	}
+}
+
+func (app *BaseApp) performBackup(height int64) error {
+	if app.backupManager == nil {
+		return fmt.Errorf("backup manager not initialized")
+	}
+	return app.backupManager.PerformBackup(height)
 }

@@ -103,6 +103,11 @@ const (
 	// mempool flags
 	FlagMempoolMaxTxs = "mempool.max-txs"
 
+	// backup system flags
+	FlagBackupEnable        = "backup.enable"
+	FlagBackupBlockInterval = "backup.block-interval"
+	FlagBackupDir           = "backup.dir"
+
 	// testnet keys
 	KeyIsTestnet             = "is-testnet"
 	KeyNewChainID            = "new-chain-ID"
@@ -623,6 +628,19 @@ func startApp(svrCtx *Context, appCreator types.AppCreator, opts StartCmdOptions
 		app = appCreator(svrCtx.Logger, db, traceWriter, svrCtx.Viper)
 	}
 
+	// Configure backup system if it's a BaseApp
+	if baseApp, ok := app.(interface {
+		SetBackupConfig(enabled bool, blockInterval uint64, backupDir string)
+		SetRootDir(rootDir string)
+	}); ok {
+		backupEnabled := svrCtx.Viper.GetBool(FlagBackupEnable)
+		backupBlockInterval := svrCtx.Viper.GetUint64(FlagBackupBlockInterval)
+		backupDir := svrCtx.Viper.GetString(FlagBackupDir)
+
+		baseApp.SetBackupConfig(backupEnabled, backupBlockInterval, backupDir)
+		baseApp.SetRootDir(home)
+	}
+
 	cleanupFn = func() {
 		traceCleanupFn()
 		if localErr := app.Close(); localErr != nil {
@@ -973,7 +991,6 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Uint64(FlagPruningInterval, 0, "Height interval at which pruned heights are removed from disk (ignored if pruning is not 'custom')")
 	cmd.Flags().Uint(FlagInvCheckPeriod, 0, "Assert registered invariants every N blocks")
 	cmd.Flags().Uint64(FlagMinRetainBlocks, 0, "Minimum block height offset during ABCI commit to prune CometBFT blocks")
-	cmd.Flags().Bool(FlagSkipEvidenceRetention, false, "Skip evidence retention")
 	cmd.Flags().Bool(FlagAPIEnable, false, "Define if the API server should be enabled")
 	cmd.Flags().Bool(FlagAPISwagger, false, "Define if swagger documentation should automatically be registered (Note: the API must also be enabled)")
 	cmd.Flags().String(FlagAPIAddress, serverconfig.DefaultAPIAddress, "the API server address to listen on")
@@ -992,6 +1009,11 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Int(FlagMempoolMaxTxs, mempool.DefaultMaxTx, "Sets MaxTx value for the app-side mempool")
 	cmd.Flags().Duration(FlagShutdownGrace, 0*time.Second, "On Shutdown, duration to wait for resource clean up")
 	cmd.Flags().Bool(FlagDumpCommitDebugExecutionTrace, false, "Dump commit debug storage commit execution trace")
+
+	// Backup system flags
+	cmd.Flags().Bool(FlagBackupEnable, false, "Enable automatic blockchain backup system")
+	cmd.Flags().Uint64(FlagBackupBlockInterval, 1000, "Backup every N blocks (default: 1000)")
+	cmd.Flags().String(FlagBackupDir, "./backups", "Backup directory path")
 
 	// support old flags name for backwards compatibility
 	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {
