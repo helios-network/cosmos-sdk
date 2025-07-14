@@ -906,6 +906,8 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	res, err = app.internalFinalizeBlock(context.Background(), req)
 	if res != nil {
 		res.AppHash = app.workingHash()
+
+		app.triggerBackupAfterWorkingHash(req.Height)
 	}
 
 	return res, err
@@ -995,7 +997,6 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 // state transitions will be flushed to disk and as a result, but we already have
 // an application Merkle root.
 func (app *BaseApp) workingHash() []byte {
-
 	// TODO: mode dump-debug-execution-trace
 	if app.DumpCommitDebugExecutionTrace {
 		traceCommits := app.finalizeBlockState.ms.(cachemulti.Store).DumpTrace()
@@ -1028,6 +1029,27 @@ func (app *BaseApp) workingHash() []byte {
 	app.logger.Debug("hash of all writes", "workingHash", fmt.Sprintf("%X", commitHash))
 
 	return commitHash
+}
+
+func (app *BaseApp) triggerBackupAfterWorkingHash(height int64) {
+	if app.backupManager == nil {
+		return
+	}
+
+	if !app.backupManager.ShouldBackup(height) {
+		return
+	}
+
+	if app.finalizeBlockState == nil {
+		app.logger.Warn("Backup skipped: finalizeBlockState is nil", "height", height)
+		return
+	}
+
+	if err := app.performBackup(height); err != nil {
+		app.logger.Error("Backup failed", "height", height, "error", err)
+	} else {
+		app.logger.Info("Backup completed successfully", "height", height)
+	}
 }
 
 func handleQueryApp(app *BaseApp, path []string, req *abci.RequestQuery) *abci.ResponseQuery {
