@@ -17,16 +17,6 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
-const (
-	BOOST_OPTIMIZATION_ACTIVATION_BLOCK = 10
-)
-
-// TODO: REMOVE WHEN MAINNET IS READY
-func (k *Keeper) shouldUseOptimizedBoostSystem(ctx context.Context) bool {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	return sdkCtx.BlockHeight() >= BOOST_OPTIMIZATION_ACTIVATION_BLOCK
-}
-
 // GetDelegation returns a specific delegation.
 func (k Keeper) GetTotalBoostedDelegation(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) (types.DelegationBoost, error) {
 	store := k.storeService.OpenKVStore(ctx)
@@ -67,11 +57,6 @@ func (k Keeper) GetTotalBoostedDelegations(ctx context.Context, delAddr sdk.AccA
 
 // GetTotalBoostedValidator gets the total boost amount for a given validator.
 func (k *Keeper) GetTotalBoostedValidator(ctx context.Context, val sdk.ValAddress) (math.LegacyDec, error) {
-	// Use legacy calculation before optimization activation for backward compatibility
-	if !k.shouldUseOptimizedBoostSystem(ctx) {
-		return k.calculateTotalBoostLegacy(ctx, val)
-	}
-
 	total, err := k.getValidatorBoostTotalFromStore(ctx, val)
 	if err == nil {
 		return total, nil
@@ -1033,12 +1018,10 @@ func (k Keeper) SetDelegationBoost(ctx context.Context, delegationBoost types.De
 	}
 
 	var oldAmount math.Int
-	if k.shouldUseOptimizedBoostSystem(ctx) {
-		if existingBoost, err := k.GetTotalBoostedDelegation(ctx, delegatorAddress, valAddr); err == nil {
-			oldAmount = existingBoost.Amount
-		} else {
-			oldAmount = math.ZeroInt()
-		}
+	if existingBoost, err := k.GetTotalBoostedDelegation(ctx, delegatorAddress, valAddr); err == nil {
+		oldAmount = existingBoost.Amount
+	} else {
+		oldAmount = math.ZeroInt()
 	}
 
 	store := k.storeService.OpenKVStore(ctx)
@@ -1053,13 +1036,11 @@ func (k Keeper) SetDelegationBoost(ctx context.Context, delegationBoost types.De
 		return err
 	}
 
-	if k.shouldUseOptimizedBoostSystem(ctx) {
-		valAddrSDK := sdk.ValAddress(valAddr)
-		delta := math.LegacyNewDecFromInt(delegationBoost.Amount.Sub(oldAmount))
+	valAddrSDK := sdk.ValAddress(valAddr)
+	delta := math.LegacyNewDecFromInt(delegationBoost.Amount.Sub(oldAmount))
 
-		if !delta.IsZero() {
-			k.updateValidatorBoostCacheWithDelta(ctx, valAddrSDK, delta)
-		}
+	if !delta.IsZero() {
+		k.updateValidatorBoostCacheWithDelta(ctx, valAddrSDK, delta)
 	}
 
 	return nil
@@ -1235,7 +1216,6 @@ func (k Keeper) Delegate(
 	validator types.Validator,
 	subtractAccount bool,
 ) (newShares math.LegacyDec, err error) {
-
 	// In some situations, the exchange rate becomes invalid, e.g. if
 	// Validator loses all tokens due to slashing. In this case,
 	// make all future delegations invalid.
@@ -1551,7 +1531,6 @@ func (k Keeper) Undelegate(
 	erc20Denom string,
 	erc20Amount math.Int,
 ) (time.Time, math.Int, error) {
-
 	validator, err := k.GetValidator(ctx, valAddr)
 	if err != nil {
 		return time.Time{}, math.Int{}, err
@@ -1584,7 +1563,7 @@ func (k Keeper) Undelegate(
 	// Update asset weight for the specific denom
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
-	//TODO: to recheck if we remove asset weight after or before completeUnbonding
+	// TODO: to recheck if we remove asset weight after or before completeUnbonding
 	if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, returnAmount, sdkCtx); err != nil {
 		return time.Time{}, math.Int{}, err
 	}
