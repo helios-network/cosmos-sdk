@@ -400,3 +400,11 @@ func (app *BaseApp) SetTraceFlightRecorder(tr *metrics.TraceRecorder) {
 func SetTraceFlightRecorder(tr *metrics.TraceRecorder) func(*BaseApp) {
 	return func(app *BaseApp) { app.traceFlightRecorder = tr }
 }
+
+func SetBackupConfig(enabled bool, blockInterval uint64, backupDir string, minRetainBackups uint64) func(*BaseApp) {
+	return func(app *BaseApp) { app.SetBackupConfig(enabled, blockInterval, backupDir, minRetainBackups) }
+}
+
+func SetRootDir(rootDir string) func(*BaseApp) {
+	return func(app *BaseApp) { app.SetRootDir(rootDir) }
+}

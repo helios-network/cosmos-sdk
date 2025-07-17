@@ -104,9 +104,10 @@ const (
 	FlagMempoolMaxTxs = "mempool.max-txs"
 
 	// backup system flags
-	FlagBackupEnable        = "backup.enable"
-	FlagBackupBlockInterval = "backup.block-interval"
-	FlagBackupDir           = "backup.dir"
+	FlagBackupEnable           = "backup.enable"
+	FlagBackupBlockInterval    = "backup.block-interval"
+	FlagBackupDir              = "backup.dir"
+	FlagBackupMinRetainBackups = "backup.min-retain-backups"
 
 	// testnet keys
 	KeyIsTestnet             = "is-testnet"
@@ -627,7 +628,6 @@ func startApp(svrCtx *Context, appCreator types.AppCreator, opts StartCmdOptions
 	} else {
 		app = appCreator(svrCtx.Logger, db, traceWriter, svrCtx.Viper)
 	}
-
 	// Configure backup system if it's a BaseApp
 	if baseApp, ok := app.(interface {
 		SetBackupConfig(enabled bool, blockInterval uint64, backupDir string)
@@ -1014,6 +1014,7 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Bool(FlagBackupEnable, false, "Enable automatic blockchain backup system")
 	cmd.Flags().Uint64(FlagBackupBlockInterval, 1000, "Backup every N blocks (default: 1000)")
 	cmd.Flags().String(FlagBackupDir, "./backups", "Backup directory path")
+	cmd.Flags().Uint64(FlagBackupMinRetainBackups, 2, "Minimum number of backups to keep (default: 2)")
 
 	// support old flags name for backwards compatibility
 	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {

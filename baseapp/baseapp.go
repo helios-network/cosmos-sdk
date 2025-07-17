@@ -1215,18 +1215,18 @@ func (app *BaseApp) OpenTraceCommitDB(rootDir string, backendType dbm.BackendTyp
 	return dbm.NewDB("trace", backendType, dataDir)
 }
 
-func (app *BaseApp) SetBackupConfig(enabled bool, blockInterval uint64, backupDir string) {
+func (app *BaseApp) SetBackupConfig(enabled bool, blockInterval uint64, backupDir string, minRetainBackups uint64) {
 	if app.backupManager == nil {
 		app.backupManager = NewBackupManager(app.logger)
 	}
 
-	app.backupManager.Configure(enabled, blockInterval, backupDir, app.rootDir, app.minRetainBlocks, app.cms)
+	app.backupManager.Configure(enabled, blockInterval, backupDir, app.rootDir, app.minRetainBlocks, minRetainBackups, app.cms)
 }
 
 func (app *BaseApp) SetRootDir(rootDir string) {
 	app.rootDir = rootDir
 	if app.backupManager != nil {
-		app.backupManager.Configure(app.backupManager.IsEnabled(), app.backupManager.GetBlockInterval(), app.backupManager.GetBackupDir(), rootDir, app.minRetainBlocks, app.cms)
+		app.backupManager.Configure(app.backupManager.IsEnabled(), app.backupManager.GetBlockInterval(), app.backupManager.GetBackupDir(), rootDir, app.minRetainBlocks, app.backupManager.GetMinRetainBackups(), app.cms)
 	}
 }
 

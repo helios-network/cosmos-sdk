@@ -1380,8 +1380,6 @@ func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
 		snapshotRetentionHeights := app.snapshotManager.GetSnapshotBlockRetentionHeights()
 		if snapshotRetentionHeights > 0 {
 			retentionHeight = minNonZero(retentionHeight, commitHeight-snapshotRetentionHeights)
-
-			fmt.Println("snapshot retentionHeight", retentionHeight, "commitHeight", commitHeight, "snapshotRetentionHeights", snapshotRetentionHeights)
 		}
 	}
 
@@ -1392,8 +1390,6 @@ func (app *BaseApp) GetBlockRetentionHeight(commitHeight int64) int64 {
 		// prune nothing in the case of a non-positive height
 		return 0
 	}
-
-	fmt.Println("retentionHeight", retentionHeight)
 
 	return retentionHeight
 }

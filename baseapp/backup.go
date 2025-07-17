@@ -3,24 +3,27 @@ package baseapp
 import (
 	"archive/tar"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"cosmossdk.io/log"
 )
 
 type BackupManager struct {
-	enabled         bool
-	blockInterval   uint64
-	backupDir       string
-	rootDir         string
-	minRetainBlocks uint64
-	cms             interface{}
-	logger          log.Logger
+	enabled          bool
+	blockInterval    uint64
+	backupDir        string
+	rootDir          string
+	minRetainBlocks  uint64
+	minRetainBackups uint64
+	cms              interface{}
+	logger           log.Logger
 }
 
 func NewBackupManager(logger log.Logger) *BackupManager {
@@ -29,7 +32,7 @@ func NewBackupManager(logger log.Logger) *BackupManager {
 	}
 }
 
-func (bm *BackupManager) Configure(enabled bool, blockInterval uint64, backupDir string, rootDir string, minRetainBlocks uint64, cms interface{}) error {
+func (bm *BackupManager) Configure(enabled bool, blockInterval uint64, backupDir string, rootDir string, minRetainBlocks uint64, minRetainBackups uint64, cms interface{}) error {
 	if enabled {
 		if err := bm.validateConfiguration(blockInterval, minRetainBlocks, cms); err != nil {
 			bm.logger.Error("Backup system disabled", "error", err)
@@ -40,9 +43,14 @@ func (bm *BackupManager) Configure(enabled bool, blockInterval uint64, backupDir
 
 	bm.enabled = enabled
 	bm.blockInterval = blockInterval
-	bm.backupDir = backupDir
+	if backupDir != "" {
+		bm.backupDir = filepath.Join(rootDir, backupDir)
+	} else {
+		bm.backupDir = filepath.Join(rootDir, "backups")
+	}
 	bm.rootDir = rootDir
 	bm.minRetainBlocks = minRetainBlocks
+	bm.minRetainBackups = minRetainBackups
 	bm.cms = cms
 
 	return nil
@@ -62,6 +70,10 @@ func (bm *BackupManager) GetBlockInterval() uint64 {
 
 func (bm *BackupManager) GetBackupDir() string {
 	return bm.backupDir
+}
+
+func (bm *BackupManager) GetMinRetainBackups() uint64 {
+	return bm.minRetainBackups
 }
 
 func (bm *BackupManager) PerformBackup(height int64) error {
@@ -98,10 +110,6 @@ func (bm *BackupManager) validateConfiguration(blockInterval, minRetainBlocks ui
 		return fmt.Errorf("CommitMultiStore not initialized")
 	}
 
-	if blockInterval > minRetainBlocks/2 {
-		return fmt.Errorf("backup interval (%d) too high compared to retention (%d)", blockInterval, minRetainBlocks)
-	}
-
 	return nil
 }
 
@@ -109,136 +117,83 @@ func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backu
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
 	backupName := fmt.Sprintf("snapshot_%d_%s", height, timestamp)
 
-	snapshotDir := filepath.Join(backupDir, "snapshot_data")
-	if err := os.RemoveAll(snapshotDir); err != nil {
-		return fmt.Errorf("failed to remove existing snapshot directory: %w", err)
-	}
-
-	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create snapshot directory: %w", err)
-	}
-
 	dataDir := filepath.Join(rootDir, "data")
-	dbFiles := []string{"application.db", "blockstore.db", "state.db"}
-	copiedFiles := 0
+	dbFilesToIncludeInSnapshot := []string{"application.db", "blockstore.db", "state.db"}
 
-	for _, dbFile := range dbFiles {
-		sourcePath := filepath.Join(dataDir, dbFile)
-		destPath := filepath.Join(snapshotDir, dbFile)
-
-		if err := bm.copyFileOrDir(sourcePath, destPath); err != nil {
-			bm.logger.Warn("Failed to copy database file", "file", dbFile, "error", err)
-			continue
-		}
-		copiedFiles++
-	}
-
-	if copiedFiles == 0 {
-		return fmt.Errorf("no database files were successfully copied")
-	}
-
-	if err := bm.createPrivValidatorStateFile(snapshotDir); err != nil {
-		return fmt.Errorf("failed to create priv_validator_state.json: %w", err)
-	}
-
-	archivePath := filepath.Join(backupDir, backupName+".tar.gz")
-	if err := bm.createTarGzArchive(snapshotDir, archivePath); err != nil {
-		return fmt.Errorf("failed to create archive: %w", err)
-	}
-
-	os.RemoveAll(snapshotDir)
-
-	return nil
-}
-
-func (bm *BackupManager) copyFileOrDir(src, dest string) error {
-	srcInfo, err := os.Stat(src)
+	err := bm.deleteOldSnapshots(backupDir, bm.minRetainBackups)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete old snapshots: %w", err)
 	}
 
-	if srcInfo.IsDir() {
-		return bm.copyDirectory(src, dest)
-	}
-
-	sourceFile, err := os.Open(src)
+	err = bm.createTarGzArchiveOfSelectedFilesAndDirs(dataDir, filepath.Join(backupDir, backupName+".tar.gz"), dbFilesToIncludeInSnapshot)
 	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	destFile, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, sourceFile)
-	return err
-}
-
-func (bm *BackupManager) copyDirectory(src, dest string) error {
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return err
-	}
-
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-
-	for _, entry := range entries {
-		srcPath := filepath.Join(src, entry.Name())
-		destPath := filepath.Join(dest, entry.Name())
-
-		if entry.IsDir() {
-			if err := bm.copyDirectory(srcPath, destPath); err != nil {
-				return err
-			}
-		} else {
-			if err := bm.copyFile(srcPath, destPath); err != nil {
-				return err
-			}
-		}
+		return fmt.Errorf("failed to create snapshot data archive: %w", err)
 	}
 
 	return nil
 }
 
-func (bm *BackupManager) copyFile(src, dest string) error {
-	sourceFile, err := os.Open(src)
+func (bm *BackupManager) deleteOldSnapshots(backupDir string, minRetainBackups uint64) error {
+	files, err := bm.listSnapshotFiles(backupDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list snapshot files: %w", err)
 	}
-	defer sourceFile.Close()
 
-	destFile, err := os.Create(dest)
-	if err != nil {
-		return err
+	if len(files) <= int(minRetainBackups) {
+		return nil
 	}
-	defer destFile.Close()
 
-	_, err = io.Copy(destFile, sourceFile)
-	return err
+	filesToDelete := files[:len(files)-int(minRetainBackups)]
+
+	for _, file := range filesToDelete {
+		if err := os.Remove(filepath.Join(backupDir, file.Name)); err != nil {
+			return fmt.Errorf("failed to delete snapshot file: %w", err)
+		}
+		bm.logger.Info("Deleted old backup", "file", file.Name, "height", file.Height)
+	}
+
+	return nil
 }
 
-func (bm *BackupManager) createPrivValidatorStateFile(snapshotDir string) error {
-	privValidatorState := map[string]interface{}{
-		"height": "0",
-		"round":  0,
-		"step":   0,
-	}
-
-	jsonData, err := json.MarshalIndent(privValidatorState, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	filePath := filepath.Join(snapshotDir, "priv_validator_state.json")
-	return os.WriteFile(filePath, jsonData, 0o644)
+type SnapshotFile struct {
+	Name   string
+	Height int64
 }
 
-func (bm *BackupManager) createTarGzArchive(sourceDir, archivePath string) error {
+func (bm *BackupManager) listSnapshotFiles(backupDir string) ([]SnapshotFile, error) {
+	files, err := os.ReadDir(backupDir)
+	if err != nil {
+		return nil, err
+	}
+	filesNames := make([]string, len(files))
+	for i, file := range files {
+		if strings.HasPrefix(file.Name(), "snapshot_") {
+			// test if the file contains a valid height
+			parts := strings.Split(file.Name(), "_")
+			_, err := strconv.ParseInt(parts[1], 10, 64)
+			if err != nil {
+				continue
+			}
+			filesNames[i] = file.Name()
+		}
+	}
+	sort.Slice(filesNames, func(i, j int) bool {
+		partsI := strings.Split(filesNames[i], "_")
+		partsJ := strings.Split(filesNames[j], "_")
+		heightI, _ := strconv.ParseInt(partsI[1], 10, 64)
+		heightJ, _ := strconv.ParseInt(partsJ[1], 10, 64)
+		return heightI < heightJ
+	})
+	snapshotFiles := make([]SnapshotFile, len(filesNames))
+	for i, file := range filesNames {
+		parts := strings.Split(file, "_")
+		height, _ := strconv.ParseInt(parts[1], 10, 64)
+		snapshotFiles[i] = SnapshotFile{Name: file, Height: height}
+	}
+	return snapshotFiles, nil
+}
+
+func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(sourceDir, archivePath string, filesAndDirsToInclude []string) error {
 	archiveFile, err := os.Create(archivePath)
 	if err != nil {
 		return err
@@ -259,6 +214,18 @@ func (bm *BackupManager) createTarGzArchive(sourceDir, archivePath string) error
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
 			return err
+		}
+
+		// Check if the path is in the list of files and directories to include
+		found := false
+		for _, fileOrDir := range filesAndDirsToInclude {
+			if strings.Contains(path, fileOrDir) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
 		}
 
 		relPath, err := filepath.Rel(sourceDir, path)
