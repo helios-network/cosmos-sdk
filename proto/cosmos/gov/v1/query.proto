@@ -55,6 +55,11 @@ service Query {
   rpc TallyResult(QueryTallyResultRequest) returns (QueryTallyResultResponse) {
     option (google.api.http).get = "/cosmos/gov/v1/proposals/{proposal_id}/tally";
   }
+
+  // ProposalsCount queries the total count of existing proposals.
+  rpc ProposalsCount(QueryProposalsCountRequest) returns (QueryProposalsCountResponse) {
+    option (google.api.http).get = "/cosmos/gov/v1/proposals/count";
+  }
 }
 
 // QueryConstitutionRequest is the request type for the Query/Constitution RPC method
@@ -202,4 +207,13 @@ message QueryTallyResultRequest {
 message QueryTallyResultResponse {
   // tally defines the requested tally.
   TallyResult tally = 1;
+}
+
+// QueryProposalsCountRequest is the request type for the Query/ProposalsCount RPC method.
+message QueryProposalsCountRequest {}
+
+// QueryProposalsCountResponse is the response type for the Query/ProposalsCount RPC method.
+message QueryProposalsCountResponse {
+  // count defines the total number of existing proposals.
+  uint64 count = 1;
 }

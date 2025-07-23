@@ -291,6 +291,32 @@ func (q queryServer) TallyResult(ctx context.Context, req *v1.QueryTallyResultRe
 	return &v1.QueryTallyResultResponse{Tally: &tallyResult}, nil
 }
 
+// TODO: REMOVE AFTER HARD RESET
+// ProposalsCount returns the total count of existing proposals
+func (q queryServer) ProposalsCount(ctx context.Context, _ *v1.QueryProposalsCountRequest) (*v1.QueryProposalsCountResponse, error) {
+	if q.k.IsProposalCountSystemActive(ctx) {
+		count, err := q.k.ProposalsCount.Get(ctx)
+		if err != nil {
+			if errors.IsOf(err, collections.ErrNotFound) {
+				return &v1.QueryProposalsCountResponse{Count: 0}, nil
+			}
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		return &v1.QueryProposalsCountResponse{Count: count}, nil
+	}
+
+	count := uint64(0)
+	err := q.k.Proposals.Walk(ctx, nil, func(key uint64, value v1.Proposal) (bool, error) {
+		count++
+		return false, nil
+	})
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &v1.QueryProposalsCountResponse{Count: count}, nil
+}
+
 var _ v1beta1.QueryServer = legacyQueryServer{}
 
 type legacyQueryServer struct{ qs v1.QueryServer }
