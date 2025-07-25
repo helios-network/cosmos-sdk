@@ -118,14 +118,16 @@ func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backu
 	backupName := fmt.Sprintf("snapshot_%d_%s", height, timestamp)
 
 	dataDir := filepath.Join(rootDir, "data")
+	configDir := filepath.Join(rootDir, "config")
 	dbFilesToIncludeInSnapshot := []string{"application.db", "blockstore.db", "state.db"}
+	configFilesToIncludeInSnapshot := []string{"genesis.json"}
 
 	err := bm.deleteOldSnapshots(backupDir, bm.minRetainBackups)
 	if err != nil {
 		return fmt.Errorf("failed to delete old snapshots: %w", err)
 	}
 
-	err = bm.createTarGzArchiveOfSelectedFilesAndDirs(dataDir, filepath.Join(backupDir, backupName+".tar.gz"), dbFilesToIncludeInSnapshot)
+	err = bm.createTarGzArchiveOfSelectedFilesAndDirs(filepath.Join(backupDir, backupName+".tar.gz"), []string{dataDir, configDir}, [][]string{dbFilesToIncludeInSnapshot, configFilesToIncludeInSnapshot})
 	if err != nil {
 		return fmt.Errorf("failed to create snapshot data archive: %w", err)
 	}
@@ -165,25 +167,30 @@ func (bm *BackupManager) listSnapshotFiles(backupDir string) ([]SnapshotFile, er
 	if err != nil {
 		return nil, err
 	}
-	filesNames := make([]string, len(files))
-	for i, file := range files {
-		if strings.HasPrefix(file.Name(), "snapshot_") {
+	filesNames := make([]string, 0)
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), "snapshot_") && strings.HasSuffix(file.Name(), ".tar.gz") {
 			// test if the file contains a valid height
 			parts := strings.Split(file.Name(), "_")
+			if len(parts) < 3 {
+				continue
+			}
 			_, err := strconv.ParseInt(parts[1], 10, 64)
 			if err != nil {
 				continue
 			}
-			filesNames[i] = file.Name()
+			filesNames = append(filesNames, file.Name())
 		}
 	}
-	sort.Slice(filesNames, func(i, j int) bool {
-		partsI := strings.Split(filesNames[i], "_")
-		partsJ := strings.Split(filesNames[j], "_")
-		heightI, _ := strconv.ParseInt(partsI[1], 10, 64)
-		heightJ, _ := strconv.ParseInt(partsJ[1], 10, 64)
-		return heightI < heightJ
-	})
+	if len(filesNames) > 1 {
+		sort.Slice(filesNames, func(i, j int) bool {
+			partsI := strings.Split(filesNames[i], "_")
+			partsJ := strings.Split(filesNames[j], "_")
+			heightI, _ := strconv.ParseInt(partsI[1], 10, 64)
+			heightJ, _ := strconv.ParseInt(partsJ[1], 10, 64)
+			return heightI < heightJ
+		})
+	}
 	snapshotFiles := make([]SnapshotFile, len(filesNames))
 	for i, file := range filesNames {
 		parts := strings.Split(file, "_")
@@ -193,7 +200,7 @@ func (bm *BackupManager) listSnapshotFiles(backupDir string) ([]SnapshotFile, er
 	return snapshotFiles, nil
 }
 
-func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(sourceDir, archivePath string, filesAndDirsToInclude []string) error {
+func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(archivePath string, sourceDirs []string, filesAndDirsToInclude [][]string) error {
 	archiveFile, err := os.Create(archivePath)
 	if err != nil {
 		return err
@@ -206,51 +213,59 @@ func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(sourceDir, arc
 	tarWriter := tar.NewWriter(gzipWriter)
 	defer tarWriter.Close()
 
-	return filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-
-		// Check if the path is in the list of files and directories to include
-		found := false
-		for _, fileOrDir := range filesAndDirsToInclude {
-			if strings.Contains(path, fileOrDir) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil
-		}
-
-		relPath, err := filepath.Rel(sourceDir, path)
-		if err != nil {
-			return err
-		}
-		header.Name = relPath
-
-		if err := tarWriter.WriteHeader(header); err != nil {
-			return err
-		}
-
-		if info.Mode().IsRegular() {
-			file, err := os.Open(path)
+	for i, sourceDir := range sourceDirs {
+		err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 
-			_, copyErr := io.Copy(tarWriter, file)
-			file.Close()
-			if copyErr != nil {
-				return copyErr
+			header, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return err
 			}
-		}
 
-		return nil
-	})
+			// Check if the path is in the list of files and directories to include
+			found := false
+			for _, fileOrDir := range filesAndDirsToInclude[i] {
+				if strings.Contains(path, fileOrDir) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil
+			}
+
+			relPath, err := filepath.Rel(sourceDir, path)
+			if err != nil {
+				return err
+			}
+			header.Name = relPath
+
+			if err := tarWriter.WriteHeader(header); err != nil {
+				return err
+			}
+
+			if info.Mode().IsRegular() {
+				file, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+
+				_, copyErr := io.Copy(tarWriter, file)
+				file.Close()
+				if copyErr != nil {
+					return copyErr
+				}
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
