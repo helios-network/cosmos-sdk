@@ -1555,22 +1555,30 @@ func (k Keeper) Undelegate(
 	if err != nil {
 		return time.Time{}, math.Int{}, err
 	}
-	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
-	if err != nil {
-		return time.Time{}, math.Int{}, err
-	}
 
-	// Update asset weight for the specific denom
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
-	// TODO: to recheck if we remove asset weight after or before completeUnbonding
-	if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, returnAmount, sdkCtx); err != nil {
-		return time.Time{}, math.Int{}, err
-	}
+	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	if err != nil {
+		// TODO: testnet remove (sdkCtx.BlockHeight() > 53000)
+		if sdkCtx.BlockHeight() > 53000 && errors.Is(err, types.ErrNoDelegation) {
+			// La délégation a été complètement supprimée par Unbond
+			// Pas besoin de mettre à jour les asset weights, continuer avec le reste de la logique
+		} else {
+			return time.Time{}, math.Int{}, err
+		}
+	} else {
+		// Update asset weight for the specific denom only if delegation still exists
 
-	// Save the updated delegation
-	if err := k.SetDelegation(ctx, delegation); err != nil {
-		return time.Time{}, math.Int{}, err
+		// TODO: to recheck if we remove asset weight after or before completeUnbonding
+		if err := k.UpdateOrRemoveAssetWeight(&delegation, erc20Denom, returnAmount, sdkCtx); err != nil {
+			return time.Time{}, math.Int{}, err
+		}
+
+		// Save the updated delegation
+		if err := k.SetDelegation(ctx, delegation); err != nil {
+			return time.Time{}, math.Int{}, err
+		}
 	}
 
 	// Rest of the function remains the same...
