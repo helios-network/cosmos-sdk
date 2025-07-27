@@ -104,6 +104,22 @@ func NewStore(db dbm.DB, logger log.Logger, metricGatherer metrics.StoreMetrics)
 	}
 }
 
+func NewStoreWithStores(db dbm.DB, logger log.Logger, metricGatherer metrics.StoreMetrics, stores map[types.StoreKey]types.CommitKVStore) *Store {
+	return &Store{
+		db:                  db,
+		logger:              logger,
+		iavlCacheSize:       iavl.DefaultIAVLCacheSize,
+		iavlDisableFastNode: iavlDisablefastNodeDefault,
+		storesParams:        make(map[types.StoreKey]storeParams),
+		stores:              stores,
+		keysByName:          make(map[string]types.StoreKey),
+		listeners:           make(map[types.StoreKey]*types.MemoryListener),
+		removalMap:          make(map[types.StoreKey]bool),
+		pruningManager:      pruning.NewManager(db, logger),
+		metrics:             metricGatherer,
+	}
+}
+
 func (rs *Store) GetCommitSync() bool {
 	return rs.commitSync
 }

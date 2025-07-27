@@ -26,7 +26,8 @@ func DefaultContext(key, tkey storetypes.StoreKey) sdk.Context {
 	if err != nil {
 		panic(err)
 	}
-	ctx := sdk.NewContext(cms, cmtproto.Header{}, false, log.NewNopLogger())
+	acms := make(map[string]storetypes.CacheWrap)
+	ctx := sdk.NewContext(cms, acms, cmtproto.Header{}, false, log.NewNopLogger())
 
 	return ctx
 }
@@ -58,7 +59,8 @@ func DefaultContextWithKeys(
 		panic(err)
 	}
 
-	return sdk.NewContext(cms, cmtproto.Header{}, false, log.NewNopLogger())
+	acms := make(map[string]storetypes.CacheWrap)
+	return sdk.NewContext(cms, acms, cmtproto.Header{}, false, log.NewNopLogger())
 }
 
 type TestContext struct {
@@ -75,7 +77,8 @@ func DefaultContextWithDB(t testing.TB, key, tkey storetypes.StoreKey) TestConte
 	err := cms.LoadLatestVersion()
 	assert.NoError(t, err)
 
-	ctx := sdk.NewContext(cms, cmtproto.Header{Time: time.Now()}, false, log.NewNopLogger())
+	acms := make(map[string]storetypes.CacheWrap)
+	ctx := sdk.NewContext(cms, acms, cmtproto.Header{Time: time.Now()}, false, log.NewNopLogger())
 
 	return TestContext{ctx, db, cms}
 }

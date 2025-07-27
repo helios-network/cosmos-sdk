@@ -22,6 +22,8 @@ import (
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/store"
+	"cosmossdk.io/store/cachekv"
+	"cosmossdk.io/store/dbadapter"
 	storemetrics "cosmossdk.io/store/metrics"
 	"cosmossdk.io/store/snapshots"
 	storetypes "cosmossdk.io/store/types"
@@ -68,9 +70,11 @@ var _ servertypes.ABCI = (*BaseApp)(nil)
 type BaseApp struct {
 	// initialized on creation
 	logger            log.Logger
-	name              string                      // application name from abci.BlockInfo
-	db                dbm.DB                      // common DB backend
+	name              string // application name from abci.BlockInfo
+	db                dbm.DB // common DB backend
+	archiveDBs        map[string]dbm.DB
 	cms               storetypes.CommitMultiStore // Main (uncached) state
+	acms              map[string]*cachekv.Store   // Archives (cached) stores
 	qms               storetypes.MultiStore       // Optional alternative multistore for querying only.
 	storeLoader       StoreLoader                 // function to handle store loading, may be overridden with SetStoreLoader()
 	grpcQueryRouter   *GRPCQueryRouter            // router for redirecting gRPC query calls
@@ -221,12 +225,21 @@ type BaseApp struct {
 // variadic number of option functions, which act on the BaseApp to set
 // configuration choices.
 func NewBaseApp(
-	name string, logger log.Logger, db dbm.DB, txDecoder sdk.TxDecoder, options ...func(*BaseApp),
+	name string, logger log.Logger, db dbm.DB, archiveDBs map[string]dbm.DB, txDecoder sdk.TxDecoder, options ...func(*BaseApp),
 ) *BaseApp {
+	acms := make(map[string]*cachekv.Store)
+	for name, db := range archiveDBs {
+		mem := dbadapter.Store{DB: db}
+		kvstore := cachekv.NewStore(mem)
+		acms[name] = kvstore
+	}
+
 	app := &BaseApp{
 		logger:           logger,
 		name:             name,
 		db:               db,
+		archiveDBs:       archiveDBs,
+		acms:             acms,
 		cms:              store.NewCommitMultiStore(db, logger, storemetrics.NewNoOpMetrics()), // by default we use a no-op metric gather in store
 		storeLoader:      DefaultStoreLoader,
 		grpcQueryRouter:  NewGRPCQueryRouter(),
@@ -393,6 +406,14 @@ func (app *BaseApp) CommitMultiStore() storetypes.CommitMultiStore {
 	return app.cms
 }
 
+func (app *BaseApp) ArchiveCommitMultiStore(name string) *cachekv.Store {
+	return app.acms[name]
+}
+
+func (app *BaseApp) ArchiveCommitMultiStores() map[string]*cachekv.Store {
+	return app.acms
+}
+
 // SnapshotManager returns the snapshot manager.
 // application use this to register extra extension snapshotters.
 func (app *BaseApp) SnapshotManager() *snapshots.Manager {
@@ -513,6 +534,10 @@ func (app *BaseApp) IsSealed() bool { return app.sealed }
 // multi-store branch, and provided header.
 func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 	ms := app.cms.CacheMultiStore()
+	acms := make(map[string]storetypes.CacheWrap)
+	for name, acm := range app.acms {
+		acms[name] = acm
+	}
 	headerInfo := header.Info{
 		Height:  h.Height,
 		Time:    h.Time,
@@ -521,7 +546,7 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 	}
 	baseState := &state{
 		ms: ms,
-		ctx: sdk.NewContext(ms, h, false, app.logger).
+		ctx: sdk.NewContext(ms, acms, h, false, app.logger).
 			WithStreamingManager(app.streamingManager).
 			WithHeaderInfo(headerInfo),
 	}
@@ -548,6 +573,10 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 func (app *BaseApp) pruneApplication(retainHeight int64) {
 	app.logger.Info("pruning application")
 	app.cms.DeleteFromBaseVersionTo(retainHeight)
+	// todo: delete from archive stores
+	// for _, acm := range app.acms {
+	// 	acm.DeleteFromBaseVersionTo(retainHeight)
+	// }
 }
 
 // SetCircuitBreaker sets the circuit breaker for the BaseApp.

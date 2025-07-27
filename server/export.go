@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/cosmos-sdk/client/flags"
 	"github.com/cosmos/cosmos-sdk/server/types"
 	"github.com/cosmos/cosmos-sdk/version"
@@ -44,15 +45,15 @@ func ExportCmd(appExporter types.AppExporter, defaultNodeHome string) *cobra.Com
 				return err
 			}
 
-			bridgeDB, err := openBridgeDB(config.RootDir, GetAppDBBackend(serverCtx.Viper))
-			if err != nil {
-				return err
-			}
+			// bridgeDB, err := openBridgeDB(config.RootDir, GetAppDBBackend(serverCtx.Viper))
+			// if err != nil {
+			// 	return err
+			// }
 
-			chronosDB, err := openChronosDB(config.RootDir, GetAppDBBackend(serverCtx.Viper))
-			if err != nil {
-				return err
-			}
+			// chronosDB, err := openChronosDB(config.RootDir, GetAppDBBackend(serverCtx.Viper))
+			// if err != nil {
+			// 	return err
+			// }
 
 			if appExporter == nil {
 				if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: App exporter not defined. Returning genesis file."); err != nil {
@@ -88,7 +89,7 @@ func ExportCmd(appExporter types.AppExporter, defaultNodeHome string) *cobra.Com
 			modulesToExport, _ := cmd.Flags().GetStringSlice(FlagModulesToExport)
 			outputDocument, _ := cmd.Flags().GetString(flags.FlagOutputDocument)
 
-			exported, err := appExporter(serverCtx.Logger, db, bridgeDB, chronosDB, traceWriter, height, forZeroHeight, jailAllowedAddrs, serverCtx.Viper, modulesToExport)
+			exported, err := appExporter(serverCtx.Logger, db, map[string]dbm.DB{}, traceWriter, height, forZeroHeight, jailAllowedAddrs, serverCtx.Viper, modulesToExport)
 			if err != nil {
 				return fmt.Errorf("error exporting state: %w", err)
 			}

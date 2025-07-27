@@ -89,8 +89,7 @@ type (
 	AppExporter func(
 		logger log.Logger,
 		db dbm.DB,
-		bridgeDB dbm.DB,
-		chronosDB dbm.DB,
+		archiveDBs map[string]dbm.DB,
 		traceWriter io.Writer,
 		height int64,
 		forZeroHeight bool,

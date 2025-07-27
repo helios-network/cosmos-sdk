@@ -574,7 +574,11 @@ func (app *BaseApp) ExtendVote(_ context.Context, req *abci.RequestExtendVote) (
 	} else {
 		emptyHeader := cmtproto.Header{ChainID: app.chainID, Height: req.Height}
 		ms := app.cms.CacheMultiStore()
-		ctx = sdk.NewContext(ms, emptyHeader, false, app.logger).WithStreamingManager(app.streamingManager)
+		acms := make(map[string]storetypes.CacheWrap)
+		for name, acm := range app.acms {
+			acms[name] = acm
+		}
+		ctx = sdk.NewContext(ms, acms, emptyHeader, false, app.logger).WithStreamingManager(app.streamingManager)
 	}
 
 	if app.extendVote == nil {
@@ -649,7 +653,11 @@ func (app *BaseApp) VerifyVoteExtension(req *abci.RequestVerifyVoteExtension) (r
 	} else {
 		emptyHeader := cmtproto.Header{ChainID: app.chainID, Height: req.Height}
 		ms := app.cms.CacheMultiStore()
-		ctx = sdk.NewContext(ms, emptyHeader, false, app.logger).WithStreamingManager(app.streamingManager)
+		acms := make(map[string]storetypes.CacheWrap)
+		for name, acm := range app.acms {
+			acms[name] = acm
+		}
+		ctx = sdk.NewContext(ms, acms, emptyHeader, false, app.logger).WithStreamingManager(app.streamingManager)
 	}
 
 	// If vote extensions are not enabled, as a safety precaution, we return an
@@ -952,6 +960,11 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	}
 
 	app.cms.Commit()
+
+	// commit all archive stores
+	for _, acm := range app.acms {
+		acm.Write()
+	}
 
 	resp := &abci.ResponseCommit{
 		RetainHeight: retainHeight,
@@ -1300,7 +1313,13 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 
 	// branch the commit multi-store for safety
 	header := app.checkState.Context().BlockHeader()
-	ctx := sdk.NewContext(cacheMS, header, true, app.logger).
+
+	acms := make(map[string]storetypes.CacheWrap)
+	for name, acm := range app.acms {
+		acms[name] = acm
+	}
+
+	ctx := sdk.NewContext(cacheMS, acms, header, true, app.logger).
 		WithMinGasPrices(app.minGasPrices).
 		WithBlockHeight(height).
 		WithGasMeter(storetypes.NewGasMeter(app.queryGasLimit)).WithBlockHeader(header)

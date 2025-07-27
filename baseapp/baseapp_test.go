@@ -70,7 +70,7 @@ func NewBaseAppSuite(t *testing.T, opts ...func(*baseapp.BaseApp)) *BaseAppSuite
 	logBuffer := new(bytes.Buffer)
 	logger := log.NewLogger(logBuffer, log.ColorOption(false))
 
-	app := baseapp.NewBaseApp(t.Name(), logger, db, txConfig.TxDecoder(), opts...)
+	app := baseapp.NewBaseApp(t.Name(), logger, db, map[string]dbm.DB{}, txConfig.TxDecoder(), opts...)
 	require.Equal(t, t.Name(), app.Name())
 
 	app.SetInterfaceRegistry(cdc.InterfaceRegistry())
@@ -96,7 +96,7 @@ func getQueryBaseapp(t *testing.T) *baseapp.BaseApp {
 
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, map[string]dbm.DB{}, nil)
 
 	_, err := app.FinalizeBlock(&abci.RequestFinalizeBlock{Height: 1})
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestLoadVersion(t *testing.T) {
 	pruningOpt := baseapp.SetPruning(pruningtypes.NewPruningOptions(pruningtypes.PruningNothing))
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, logger, db, nil, pruningOpt)
+	app := baseapp.NewBaseApp(name, logger, db, map[string]dbm.DB{}, nil, pruningOpt)
 
 	// make a cap key and mount the store
 	err := app.LoadLatestVersion() // needed to make stores non-nil
@@ -264,7 +264,7 @@ func TestLoadVersion(t *testing.T) {
 	require.NoError(t, err)
 
 	// reload with LoadLatestVersion
-	app = baseapp.NewBaseApp(name, logger, db, nil, pruningOpt)
+	app = baseapp.NewBaseApp(name, logger, db, map[string]dbm.DB{}, nil, pruningOpt)
 	app.MountStores()
 
 	err = app.LoadLatestVersion()
@@ -274,7 +274,7 @@ func TestLoadVersion(t *testing.T) {
 
 	// Reload with LoadVersion, see if you can commit the same block and get
 	// the same result.
-	app = baseapp.NewBaseApp(name, logger, db, nil, pruningOpt)
+	app = baseapp.NewBaseApp(name, logger, db, map[string]dbm.DB{}, nil, pruningOpt)
 	err = app.LoadVersion(1)
 	require.Nil(t, err)
 
@@ -360,7 +360,7 @@ func TestSetLoader(t *testing.T) {
 			if tc.setLoader != nil {
 				opts = append(opts, tc.setLoader)
 			}
-			app := baseapp.NewBaseApp(t.Name(), log.NewTestLogger(t), db, nil, opts...)
+			app := baseapp.NewBaseApp(t.Name(), log.NewTestLogger(t), db, map[string]dbm.DB{}, nil, opts...)
 			app.MountStores(storetypes.NewKVStoreKey(tc.loadStoreKey))
 			err := app.LoadLatestVersion()
 			require.Nil(t, err)
@@ -383,7 +383,7 @@ func TestVersionSetterGetter(t *testing.T) {
 	pruningOpt := baseapp.SetPruning(pruningtypes.NewPruningOptions(pruningtypes.PruningDefault))
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil, pruningOpt)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, map[string]dbm.DB{}, nil, pruningOpt)
 
 	require.Equal(t, "", app.Version())
 	res, err := app.Query(context.TODO(), &abci.RequestQuery{Path: "app/version"})
@@ -406,7 +406,7 @@ func TestLoadVersionInvalid(t *testing.T) {
 	pruningOpt := baseapp.SetPruning(pruningtypes.NewPruningOptions(pruningtypes.PruningNothing))
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, logger, db, nil, pruningOpt)
+	app := baseapp.NewBaseApp(name, logger, db, map[string]dbm.DB{}, nil, pruningOpt)
 
 	err := app.LoadLatestVersion()
 	require.Nil(t, err)
@@ -422,7 +422,7 @@ func TestLoadVersionInvalid(t *testing.T) {
 	require.NoError(t, err)
 
 	// create a new app with the stores mounted under the same cap key
-	app = baseapp.NewBaseApp(name, logger, db, nil, pruningOpt)
+	app = baseapp.NewBaseApp(name, logger, db, map[string]dbm.DB{}, nil, pruningOpt)
 
 	// require we can load the latest version
 	err = app.LoadVersion(1)
@@ -442,7 +442,7 @@ func TestOptionFunction(t *testing.T) {
 	}
 
 	db := dbm.NewMemDB()
-	bap := baseapp.NewBaseApp("starting name", log.NewTestLogger(t), db, nil, testChangeNameHelper("new name"))
+	bap := baseapp.NewBaseApp("starting name", log.NewTestLogger(t), db, map[string]dbm.DB{}, nil, testChangeNameHelper("new name"))
 	require.Equal(t, bap.Name(), "new name", "BaseApp should have had name changed via option function")
 }
 
@@ -689,7 +689,7 @@ func TestABCI_CreateQueryContext(t *testing.T) {
 
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, map[string]dbm.DB{}, nil)
 
 	_, err := app.FinalizeBlock(&abci.RequestFinalizeBlock{Height: 1})
 	require.NoError(t, err)
@@ -824,7 +824,7 @@ func TestLoadVersionPruning(t *testing.T) {
 	pruningOpt := baseapp.SetPruning(pruningOptions)
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, logger, db, nil, pruningOpt)
+	app := baseapp.NewBaseApp(name, logger, db, map[string]dbm.DB{}, nil, pruningOpt)
 
 	// make a cap key and mount the store
 	capKey := storetypes.NewKVStoreKey("key1")
@@ -867,7 +867,7 @@ func TestLoadVersionPruning(t *testing.T) {
 	}
 
 	// reload with LoadLatestVersion, check it loads last version
-	app = baseapp.NewBaseApp(name, logger, db, nil, pruningOpt)
+	app = baseapp.NewBaseApp(name, logger, db, map[string]dbm.DB{}, nil, pruningOpt)
 	app.MountStores(capKey)
 
 	err = app.LoadLatestVersion()

@@ -336,7 +336,6 @@ func AddCommands(rootCmd *cobra.Command, defaultNodeHome string, appCreator type
 		startCmd,
 		cometCmd,
 		ExportCmd(appExport, defaultNodeHome),
-		ExportSoftResetCmd(appExport, defaultNodeHome),
 		version.NewVersionCommand(),
 		NewRollbackCmd(appCreator, defaultNodeHome),
 	)
@@ -366,7 +365,6 @@ func AddCommandsWithStartCmdOptions(rootCmd *cobra.Command, defaultNodeHome stri
 		startCmd,
 		cometCmd,
 		ExportCmd(appExport, defaultNodeHome),
-		ExportSoftResetCmd(appExport, defaultNodeHome),
 		version.NewVersionCommand(),
 		NewRollbackCmd(appCreator, defaultNodeHome),
 	)
@@ -486,15 +484,15 @@ func openDB(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
 	return dbm.NewDB("application", backendType, dataDir)
 }
 
-func openBridgeDB(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
-	dataDir := filepath.Join(rootDir, "data")
-	return dbm.NewDB("bridge", backendType, dataDir)
-}
+// func openBridgeDB(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
+// 	dataDir := filepath.Join(rootDir, "data")
+// 	return dbm.NewDB("bridge", backendType, dataDir)
+// }
 
-func openChronosDB(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
-	dataDir := filepath.Join(rootDir, "data")
-	return dbm.NewDB("chronos", backendType, dataDir)
-}
+// func openChronosDB(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
+// 	dataDir := filepath.Join(rootDir, "data")
+// 	return dbm.NewDB("chronos", backendType, dataDir)
+// }
 
 func openTraceWriter(traceWriterFile string) (w io.WriteCloser, err error) {
 	if traceWriterFile == "" {
