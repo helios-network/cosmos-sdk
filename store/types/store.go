@@ -319,6 +319,45 @@ type CacheKVStore interface {
 	DumpTrace() TraceCommit
 }
 
+// ArchiveKVStore extends CacheKVStore with archiving capabilities
+type ArchiveKVStore interface {
+	CacheKVStore
+
+	// ArchiveName returns the name of this archive store
+	ArchiveName() string
+
+	// ArchiveVersion returns the current version of the archive
+	ArchiveVersion() int64
+
+	// SetArchiveVersion sets the archive version
+	SetArchiveVersion(version int64)
+
+	// Commit archives the current state at the given height
+	Commit(height uint64) error
+
+	// ArchiveData archives the current state with a given version (alias for Commit)
+	ArchiveData(version int64) error
+
+	// DeleteArchivedData removes archived data for a specific version
+	DeleteArchivedData(version int64) error
+
+	// RollbackToVersion rolls back the archive to a specific version
+	RollbackToVersion(version int64) error
+
+	// PruneVersions prunes versions up to the specified version
+	PruneVersions(version int64) error
+
+	// DeleteFromBaseVersionTo deletes versions from current baseVersion to targetVersion (inclusive)
+	// and updates the baseVersion to targetVersion
+	DeleteFromBaseVersionTo(targetVersion uint64) error
+
+	// GetBaseVersion returns the current base version
+	GetBaseVersion() int64
+
+	// LatestHeight returns the latest height available
+	LatestHeight() int64
+}
+
 // CommitKVStore is an interface for MultiStore.
 type CommitKVStore interface {
 	Committer

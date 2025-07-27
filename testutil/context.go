@@ -26,7 +26,7 @@ func DefaultContext(key, tkey storetypes.StoreKey) sdk.Context {
 	if err != nil {
 		panic(err)
 	}
-	acms := make(map[string]storetypes.CacheWrap)
+	acms := make(map[string]storetypes.ArchiveKVStore)
 	ctx := sdk.NewContext(cms, acms, cmtproto.Header{}, false, log.NewNopLogger())
 
 	return ctx
@@ -59,7 +59,7 @@ func DefaultContextWithKeys(
 		panic(err)
 	}
 
-	acms := make(map[string]storetypes.CacheWrap)
+	acms := make(map[string]storetypes.ArchiveKVStore)
 	return sdk.NewContext(cms, acms, cmtproto.Header{}, false, log.NewNopLogger())
 }
 
@@ -77,7 +77,7 @@ func DefaultContextWithDB(t testing.TB, key, tkey storetypes.StoreKey) TestConte
 	err := cms.LoadLatestVersion()
 	assert.NoError(t, err)
 
-	acms := make(map[string]storetypes.CacheWrap)
+	acms := make(map[string]storetypes.ArchiveKVStore)
 	ctx := sdk.NewContext(cms, acms, cmtproto.Header{Time: time.Now()}, false, log.NewNopLogger())
 
 	return TestContext{ctx, db, cms}

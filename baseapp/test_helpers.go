@@ -53,9 +53,9 @@ func (app *BaseApp) SimTxFinalizeBlock(txEncoder sdk.TxEncoder, tx sdk.Tx) (sdk.
 
 // NewContextLegacy returns a new sdk.Context with the provided header
 func (app *BaseApp) NewContextLegacy(isCheckTx bool, header cmtproto.Header) sdk.Context {
-	acms := make(map[string]storetypes.CacheWrap)
+	acms := make(map[string]storetypes.ArchiveKVStore)
 	for name, acm := range app.acms {
-		acms[name] = acm.CacheWrap()
+		acms[name] = acm
 	}
 
 	if isCheckTx {
@@ -72,9 +72,9 @@ func (app *BaseApp) NewContext(isCheckTx bool) sdk.Context {
 }
 
 func (app *BaseApp) NewUncachedContext(isCheckTx bool, header cmtproto.Header) sdk.Context {
-	acms := make(map[string]storetypes.CacheWrap)
+	acms := make(map[string]storetypes.ArchiveKVStore)
 	for name, acm := range app.acms {
-		acms[name] = acm.CacheWrap()
+		acms[name] = acm
 	}
 	return sdk.NewContext(app.cms, acms, header, isCheckTx, app.logger)
 }

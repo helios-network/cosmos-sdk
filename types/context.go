@@ -41,7 +41,7 @@ and standard additions here would be better just to add to the Context struct
 type Context struct {
 	baseCtx context.Context
 	ms      storetypes.MultiStore
-	ams     map[string]storetypes.CacheWrap
+	ams     map[string]storetypes.ArchiveKVStore
 	// Deprecated: Use HeaderService for height, time, and chainID and CometService for the rest
 	header cmtproto.Header
 	// Deprecated: Use HeaderService for hash
@@ -71,28 +71,28 @@ type Context struct {
 type Request = Context
 
 // Read-only accessors
-func (c Context) Context() context.Context                            { return c.baseCtx }
-func (c Context) MultiStore() storetypes.MultiStore                   { return c.ms }
-func (c Context) ArchiveMultiStores() map[string]storetypes.CacheWrap { return c.ams }
-func (c Context) BlockHeight() int64                                  { return c.header.Height }
-func (c Context) BlockTime() time.Time                                { return c.header.Time }
-func (c Context) ChainID() string                                     { return c.chainID }
-func (c Context) TxBytes() []byte                                     { return c.txBytes }
-func (c Context) Logger() log.Logger                                  { return c.logger }
-func (c Context) VoteInfos() []abci.VoteInfo                          { return c.voteInfo }
-func (c Context) GasMeter() storetypes.GasMeter                       { return c.gasMeter }
-func (c Context) BlockGasMeter() storetypes.GasMeter                  { return c.blockGasMeter }
-func (c Context) IsCheckTx() bool                                     { return c.checkTx }
-func (c Context) IsReCheckTx() bool                                   { return c.recheckTx }
-func (c Context) ExecMode() ExecMode                                  { return c.execMode }
-func (c Context) MinGasPrices() DecCoins                              { return c.minGasPrice }
-func (c Context) EventManager() EventManagerI                         { return c.eventManager }
-func (c Context) Priority() int64                                     { return c.priority }
-func (c Context) KVGasConfig() storetypes.GasConfig                   { return c.kvGasConfig }
-func (c Context) TransientKVGasConfig() storetypes.GasConfig          { return c.transientKVGasConfig }
-func (c Context) StreamingManager() storetypes.StreamingManager       { return c.streamingManager }
-func (c Context) CometInfo() comet.BlockInfo                          { return c.cometInfo }
-func (c Context) HeaderInfo() header.Info                             { return c.headerInfo }
+func (c Context) Context() context.Context                                 { return c.baseCtx }
+func (c Context) MultiStore() storetypes.MultiStore                        { return c.ms }
+func (c Context) ArchiveMultiStores() map[string]storetypes.ArchiveKVStore { return c.ams }
+func (c Context) BlockHeight() int64                                       { return c.header.Height }
+func (c Context) BlockTime() time.Time                                     { return c.header.Time }
+func (c Context) ChainID() string                                          { return c.chainID }
+func (c Context) TxBytes() []byte                                          { return c.txBytes }
+func (c Context) Logger() log.Logger                                       { return c.logger }
+func (c Context) VoteInfos() []abci.VoteInfo                               { return c.voteInfo }
+func (c Context) GasMeter() storetypes.GasMeter                            { return c.gasMeter }
+func (c Context) BlockGasMeter() storetypes.GasMeter                       { return c.blockGasMeter }
+func (c Context) IsCheckTx() bool                                          { return c.checkTx }
+func (c Context) IsReCheckTx() bool                                        { return c.recheckTx }
+func (c Context) ExecMode() ExecMode                                       { return c.execMode }
+func (c Context) MinGasPrices() DecCoins                                   { return c.minGasPrice }
+func (c Context) EventManager() EventManagerI                              { return c.eventManager }
+func (c Context) Priority() int64                                          { return c.priority }
+func (c Context) KVGasConfig() storetypes.GasConfig                        { return c.kvGasConfig }
+func (c Context) TransientKVGasConfig() storetypes.GasConfig               { return c.transientKVGasConfig }
+func (c Context) StreamingManager() storetypes.StreamingManager            { return c.streamingManager }
+func (c Context) CometInfo() comet.BlockInfo                               { return c.cometInfo }
+func (c Context) HeaderInfo() header.Info                                  { return c.headerInfo }
 
 // clone the header before returning
 func (c Context) BlockHeader() cmtproto.Header {
@@ -124,7 +124,7 @@ func (c Context) Err() error {
 }
 
 // create a new context
-func NewContext(ms storetypes.MultiStore, ams map[string]storetypes.CacheWrap, header cmtproto.Header, isCheckTx bool, logger log.Logger) Context {
+func NewContext(ms storetypes.MultiStore, ams map[string]storetypes.ArchiveKVStore, header cmtproto.Header, isCheckTx bool, logger log.Logger) Context {
 	// https://github.com/gogo/protobuf/issues/519
 	header.Time = header.Time.UTC()
 	return Context{
@@ -156,7 +156,7 @@ func (c Context) WithMultiStore(ms storetypes.MultiStore) Context {
 }
 
 // WithArchiveMultiStore returns a Context with an updated ArchiveMultiStore.
-func (c Context) WithArchiveMultiStore(ams map[string]storetypes.CacheWrap) Context {
+func (c Context) WithArchiveMultiStore(ams map[string]storetypes.ArchiveKVStore) Context {
 	c.ams = ams
 	return c
 }
@@ -352,8 +352,8 @@ func (c Context) TransientStore(key storetypes.StoreKey) storetypes.KVStore {
 }
 
 // ArchiveStore fetches an ArchiveStore from the MultiStore.
-func (c Context) ArchiveStore(key storetypes.StoreKey) storetypes.KVStore {
-	return c.ams[key.Name()].(storetypes.KVStore) //gaskv.NewStore(c.ams[key.Name()].(storetypes.KVStore), c.gasMeter, c.kvGasConfig)
+func (c Context) ArchiveStore(key storetypes.StoreKey) storetypes.ArchiveKVStore {
+	return c.ams[key.Name()] //gaskv.NewStore(c.ams[key.Name()].(storetypes.KVStore), c.gasMeter, c.kvGasConfig)
 }
 
 // CacheContext returns a new Context with the multi-store cached and a new

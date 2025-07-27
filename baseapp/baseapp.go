@@ -22,8 +22,7 @@ import (
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/store"
-	"cosmossdk.io/store/cachekv"
-	"cosmossdk.io/store/dbadapter"
+	"cosmossdk.io/store/archivekv"
 	storemetrics "cosmossdk.io/store/metrics"
 	"cosmossdk.io/store/snapshots"
 	storetypes "cosmossdk.io/store/types"
@@ -74,7 +73,7 @@ type BaseApp struct {
 	db                dbm.DB // common DB backend
 	archiveDBs        map[string]dbm.DB
 	cms               storetypes.CommitMultiStore // Main (uncached) state
-	acms              map[string]*cachekv.Store   // Archives (cached) stores
+	acms              map[string]*archivekv.Store // Archives (cached) stores
 	qms               storetypes.MultiStore       // Optional alternative multistore for querying only.
 	storeLoader       StoreLoader                 // function to handle store loading, may be overridden with SetStoreLoader()
 	grpcQueryRouter   *GRPCQueryRouter            // router for redirecting gRPC query calls
@@ -227,11 +226,11 @@ type BaseApp struct {
 func NewBaseApp(
 	name string, logger log.Logger, db dbm.DB, archiveDBs map[string]dbm.DB, txDecoder sdk.TxDecoder, options ...func(*BaseApp),
 ) *BaseApp {
-	acms := make(map[string]*cachekv.Store)
-	for name, db := range archiveDBs {
-		mem := dbadapter.Store{DB: db}
-		kvstore := cachekv.NewStore(mem)
-		acms[name] = kvstore
+	acms := make(map[string]*archivekv.Store)
+	for name, archiveDb := range archiveDBs {
+		// mem := dbadapter.Store{DB: archiveDb}
+		// kvstore := cachekv.NewStore(mem)
+		acms[name] = archivekv.NewStore(name, archiveDb)
 	}
 
 	app := &BaseApp{
@@ -406,11 +405,11 @@ func (app *BaseApp) CommitMultiStore() storetypes.CommitMultiStore {
 	return app.cms
 }
 
-func (app *BaseApp) ArchiveCommitMultiStore(name string) *cachekv.Store {
+func (app *BaseApp) ArchiveCommitMultiStore(name string) *archivekv.Store {
 	return app.acms[name]
 }
 
-func (app *BaseApp) ArchiveCommitMultiStores() map[string]*cachekv.Store {
+func (app *BaseApp) ArchiveCommitMultiStores() map[string]*archivekv.Store {
 	return app.acms
 }
 
@@ -534,10 +533,13 @@ func (app *BaseApp) IsSealed() bool { return app.sealed }
 // multi-store branch, and provided header.
 func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 	ms := app.cms.CacheMultiStore()
-	acms := make(map[string]storetypes.CacheWrap)
+
+	// Create archive stores map with CacheWrap
+	acms := make(map[string]storetypes.ArchiveKVStore)
 	for name, acm := range app.acms {
 		acms[name] = acm
 	}
+
 	headerInfo := header.Info{
 		Height:  h.Height,
 		Time:    h.Time,
@@ -572,11 +574,19 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 
 func (app *BaseApp) pruneApplication(retainHeight int64) {
 	app.logger.Info("pruning application")
-	app.cms.DeleteFromBaseVersionTo(retainHeight)
-	// todo: delete from archive stores
-	// for _, acm := range app.acms {
-	// 	acm.DeleteFromBaseVersionTo(retainHeight)
-	// }
+
+	// Prune main store
+	if err := app.cms.DeleteFromBaseVersionTo(retainHeight); err != nil {
+		app.logger.Error("failed to prune main store", "error", err)
+	}
+
+	// // Prune archive stores with error handling
+	for name, acm := range app.acms {
+		if err := acm.DeleteFromBaseVersionTo(uint64(retainHeight)); err != nil {
+			app.logger.Error("failed to prune archive store", "store", name, "error", err)
+			// Continue with other stores even if one fails
+		}
+	}
 }
 
 // SetCircuitBreaker sets the circuit breaker for the BaseApp.

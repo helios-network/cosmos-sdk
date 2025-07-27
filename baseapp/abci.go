@@ -574,7 +574,7 @@ func (app *BaseApp) ExtendVote(_ context.Context, req *abci.RequestExtendVote) (
 	} else {
 		emptyHeader := cmtproto.Header{ChainID: app.chainID, Height: req.Height}
 		ms := app.cms.CacheMultiStore()
-		acms := make(map[string]storetypes.CacheWrap)
+		acms := make(map[string]storetypes.ArchiveKVStore)
 		for name, acm := range app.acms {
 			acms[name] = acm
 		}
@@ -653,7 +653,7 @@ func (app *BaseApp) VerifyVoteExtension(req *abci.RequestVerifyVoteExtension) (r
 	} else {
 		emptyHeader := cmtproto.Header{ChainID: app.chainID, Height: req.Height}
 		ms := app.cms.CacheMultiStore()
-		acms := make(map[string]storetypes.CacheWrap)
+		acms := make(map[string]storetypes.ArchiveKVStore)
 		for name, acm := range app.acms {
 			acms[name] = acm
 		}
@@ -962,8 +962,10 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	app.cms.Commit()
 
 	// commit all archive stores
-	for _, acm := range app.acms {
-		acm.Write()
+	for name, acm := range app.acms {
+		if err := acm.ArchiveData(header.Height); err != nil {
+			app.logger.Error("Failed to archive data", "store", name, "height", header.Height, "error", err)
+		}
 	}
 
 	resp := &abci.ResponseCommit{
@@ -1314,7 +1316,7 @@ func (app *BaseApp) CreateQueryContext(height int64, prove bool) (sdk.Context, e
 	// branch the commit multi-store for safety
 	header := app.checkState.Context().BlockHeader()
 
-	acms := make(map[string]storetypes.CacheWrap)
+	acms := make(map[string]storetypes.ArchiveKVStore)
 	for name, acm := range app.acms {
 		acms[name] = acm
 	}
