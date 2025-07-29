@@ -110,6 +110,16 @@ func (k Querier) ShareRepartitionMap(ctx context.Context, req *types.QueryShareR
 		}
 	}
 
+	// Aggregate pre-calculated asset weights from inactive validators
+	for _, validator := range historicalInfo.InactiveValset {
+		for _, assetWeight := range validator.TotalAssetWeights {
+			if shareRepartition, exists := shareRepartitionMap[assetWeight.Denom]; exists {
+				shareRepartition.NetworkShares = shareRepartition.NetworkShares.Add(assetWeight.WeightedAmount)
+				shareRepartitionMap[assetWeight.Denom] = shareRepartition
+			}
+		}
+	}
+
 	// Calculate percentages
 	totalShares := math.NewIntFromUint64(0)
 	for _, consensusAsset := range stakingAssets {
