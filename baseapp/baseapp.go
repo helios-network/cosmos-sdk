@@ -13,6 +13,7 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cometbfttypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
 	"golang.org/x/exp/maps"
@@ -218,6 +219,8 @@ type BaseApp struct {
 	// Backup system
 	backupManager *BackupManager
 	rootDir       string
+
+	archiveMode bool
 }
 
 // NewBaseApp returns a reference to an initialized BaseApp. It accepts a
@@ -572,17 +575,28 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 	}
 }
 
-func (app *BaseApp) pruneApplication(retainHeight int64) {
+func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 	app.logger.Info("pruning application")
+	retainHeightNumber := cometbfttypes.GetRetainHeightWithoutFlags(retainHeight)
+
+	// Define storage range possible for the state (max 100 blocks, min 10 blocks)
+	maxHeightStateToRetain := currentHeight - 100
+	minHeightStateToRetain := currentHeight - 10
+	heightStateToRetain := retainHeightNumber
+	if heightStateToRetain < maxHeightStateToRetain {
+		heightStateToRetain = maxHeightStateToRetain
+	} else if heightStateToRetain > minHeightStateToRetain {
+		heightStateToRetain = minHeightStateToRetain
+	}
 
 	// Prune main store
-	if err := app.cms.DeleteFromBaseVersionTo(retainHeight); err != nil {
+	if err := app.cms.DeleteFromBaseVersionTo(heightStateToRetain); err != nil {
 		app.logger.Error("failed to prune main store", "error", err)
 	}
 
 	// // Prune archive stores with error handling
 	for name, acm := range app.acms {
-		if err := acm.DeleteFromBaseVersionTo(uint64(retainHeight)); err != nil {
+		if err := acm.DeleteFromBaseVersionTo(uint64(retainHeightNumber)); err != nil {
 			app.logger.Error("failed to prune archive store", "store", name, "error", err)
 			// Continue with other stores even if one fails
 		}
@@ -1269,9 +1283,20 @@ func (app *BaseApp) SetRootDir(rootDir string) {
 	}
 }
 
-func (app *BaseApp) performBackup(height int64) error {
+func (app *BaseApp) PerformBackup(height int64) (string, error) {
+	if app.backupManager == nil {
+		return "", fmt.Errorf("backup manager not initialized")
+	}
+	return app.backupManager.PerformBackup(height)
+}
+
+func (app *BaseApp) PerformRestore(fileName string) error {
 	if app.backupManager == nil {
 		return fmt.Errorf("backup manager not initialized")
 	}
-	return app.backupManager.PerformBackup(height)
+	return app.backupManager.PerformRestore(fileName)
+}
+
+func (app *BaseApp) SetArchiveMode(archiveMode bool) {
+	app.archiveMode = archiveMode
 }

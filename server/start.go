@@ -109,6 +109,9 @@ const (
 	FlagBackupDir              = "backup.dir"
 	FlagBackupMinRetainBackups = "backup.min-retain-backups"
 
+	// archive mode flags
+	FlagArchiveMode = "archive-mode"
+
 	// testnet keys
 	KeyIsTestnet             = "is-testnet"
 	KeyNewChainID            = "new-chain-ID"
@@ -986,11 +989,13 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Bool(FlagInterBlockCache, true, "Enable inter-block caching")
 	cmd.Flags().String(flagCPUProfile, "", "Enable CPU profiling and write to the provided file")
 	cmd.Flags().Bool(FlagTrace, false, "Provide full stack traces for errors in ABCI Log")
-	cmd.Flags().String(FlagPruning, pruningtypes.PruningOptionDefault, "Pruning strategy (default|nothing|everything|custom)")
-	cmd.Flags().Uint64(FlagPruningKeepRecent, 0, "Number of recent heights to keep on disk (ignored if pruning is not 'custom')")
-	cmd.Flags().Uint64(FlagPruningInterval, 0, "Height interval at which pruned heights are removed from disk (ignored if pruning is not 'custom')")
+
+	cmd.Flags().String(FlagPruning, pruningtypes.PruningOptionCustom, "Pruning strategy (default|nothing|everything|custom)")
+	cmd.Flags().Uint64(FlagPruningKeepRecent, 172800, "Number of recent heights to keep on disk (ignored if pruning is not 'custom')")
+	cmd.Flags().Uint64(FlagPruningInterval, 10, "Height interval at which pruned heights are removed from disk (ignored if pruning is not 'custom')")
+
 	cmd.Flags().Uint(FlagInvCheckPeriod, 0, "Assert registered invariants every N blocks")
-	cmd.Flags().Uint64(FlagMinRetainBlocks, 0, "Minimum block height offset during ABCI commit to prune CometBFT blocks")
+	cmd.Flags().Uint64(FlagMinRetainBlocks, 172800, "Minimum block height offset during ABCI commit to prune CometBFT blocks (ignored if archive mode is enabled but used for pruning tx-receipts)")
 	cmd.Flags().Bool(FlagAPIEnable, false, "Define if the API server should be enabled")
 	cmd.Flags().Bool(FlagAPISwagger, false, "Define if swagger documentation should automatically be registered (Note: the API must also be enabled)")
 	cmd.Flags().String(FlagAPIAddress, serverconfig.DefaultAPIAddress, "the API server address to listen on")
@@ -1015,6 +1020,9 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Uint64(FlagBackupBlockInterval, 1000, "Backup every N blocks (default: 1000)")
 	cmd.Flags().String(FlagBackupDir, "./backups", "Backup directory path")
 	cmd.Flags().Uint64(FlagBackupMinRetainBackups, 2, "Minimum number of backups to keep (default: 2)")
+
+	// archive mode flags
+	cmd.Flags().Bool(FlagArchiveMode, true, "Enable archive mode")
 
 	// support old flags name for backwards compatibility
 	cmd.Flags().SetNormalizeFunc(func(f *pflag.FlagSet, name string) pflag.NormalizedName {

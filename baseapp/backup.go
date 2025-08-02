@@ -76,21 +76,21 @@ func (bm *BackupManager) GetMinRetainBackups() uint64 {
 	return bm.minRetainBackups
 }
 
-func (bm *BackupManager) PerformBackup(height int64) error {
-	if bm.cms == nil {
-		return fmt.Errorf("CommitMultiStore is not initialized")
-	}
-
+func (bm *BackupManager) PerformBackup(height int64) (string, error) {
 	rootDir := bm.rootDir
 	if rootDir == "" {
 		rootDir = "."
 	}
 
 	if err := os.MkdirAll(bm.backupDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create backup directory: %w", err)
+		return "", fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
 	return bm.createBackupArchive(rootDir, height, bm.backupDir)
+}
+
+func (bm *BackupManager) PerformRestore(fileName string) error {
+	return bm.installSnapshot(fileName)
 }
 
 func (bm *BackupManager) validateConfiguration(blockInterval, minRetainBlocks uint64, cms interface{}) error {
@@ -113,26 +113,202 @@ func (bm *BackupManager) validateConfiguration(blockInterval, minRetainBlocks ui
 	return nil
 }
 
-func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backupDir string) error {
+func (bm *BackupManager) installSnapshot(fileName string) error {
+	snapshotDir := filepath.Join(bm.rootDir, "backups")
+	snapshotFile := filepath.Join(snapshotDir, fileName)
+
+	// check if the file exists
+	if _, err := os.Stat(snapshotFile); os.IsNotExist(err) {
+		return fmt.Errorf("snapshot file does not exist: %s", snapshotFile)
+	}
+
+	// Define files to be replaced
+	dbFilesToIncludeInSnapshot := []string{"application.db", "blockstore.db", "state.db", "metadata.json"}
+	configFilesToIncludeInSnapshot := []string{"genesis.json", "addrbook.json", "persistent_peers.txt"}
+
+	// Remove existing files and directories
+	dataDir := filepath.Join(bm.rootDir, "data")
+	configDir := filepath.Join(bm.rootDir, "config")
+
+	// Remove database files and directories
+	for _, dbFile := range dbFilesToIncludeInSnapshot {
+		dbPath := filepath.Join(dataDir, dbFile)
+		if err := os.RemoveAll(dbPath); err != nil {
+			bm.logger.Error("Failed to remove existing database file", "file", dbPath, "error", err)
+		}
+	}
+
+	// Remove config files
+	for _, configFile := range configFilesToIncludeInSnapshot {
+		configPath := filepath.Join(configDir, configFile)
+		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+			bm.logger.Error("Failed to remove existing config file", "file", configPath, "error", err)
+		}
+	}
+
+	// Open and extract the snapshot
+	snapshotFileReader, err := os.Open(snapshotFile)
+	if err != nil {
+		return fmt.Errorf("failed to open snapshot file: %w", err)
+	}
+	defer snapshotFileReader.Close()
+
+	// Create gzip reader
+	gzipReader, err := gzip.NewReader(snapshotFileReader)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzipReader.Close()
+
+	// Create tar reader
+	tarReader := tar.NewReader(gzipReader)
+
+	// Extract files from the archive
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		// Skip if it's a directory
+		if header.Typeflag == tar.TypeDir {
+			continue
+		}
+
+		// Parse the path to determine target location
+		// Expected format: backup/data/filename or backup/config/filename
+		pathParts := strings.Split(header.Name, "/")
+		if len(pathParts) < 3 || pathParts[0] != "backup" {
+			bm.logger.Warn("Unexpected file path in snapshot", "path", header.Name)
+			continue
+		}
+
+		var targetDir string
+		var fileName string
+
+		if pathParts[1] == "data" {
+			targetDir = dataDir
+			fileName = pathParts[2]
+		} else if pathParts[1] == "config" {
+			targetDir = configDir
+			fileName = pathParts[2]
+		} else {
+			bm.logger.Warn("Unknown directory in snapshot", "directory", pathParts[1])
+			continue
+		}
+
+		if pathParts[2] == "application.db" {
+			targetDir = filepath.Join(targetDir, "application.db")
+			fileName = pathParts[3]
+		} else if pathParts[2] == "blockstore.db" {
+			targetDir = filepath.Join(targetDir, "blockstore.db")
+			fileName = pathParts[3]
+		} else if pathParts[2] == "state.db" {
+			targetDir = filepath.Join(targetDir, "state.db")
+			fileName = pathParts[3]
+		}
+
+		// create directory if it doesn't exist
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+		}
+
+		// Create target file
+		targetPath := filepath.Join(targetDir, fileName)
+		targetFile, err := os.Create(targetPath)
+		if err != nil {
+			return fmt.Errorf("failed to create target file %s: %w", targetPath, err)
+		}
+
+		// Copy file content
+		_, err = io.Copy(targetFile, tarReader)
+		targetFile.Close()
+		if err != nil {
+			return fmt.Errorf("failed to copy file content to %s: %w", targetPath, err)
+		}
+
+		bm.logger.Info("Extracted file from snapshot", "file", targetPath)
+	}
+
+	// write persistent_peers.txt to config.toml if persistent_peers.txt exists
+	if _, err := os.Stat(filepath.Join(configDir, "persistent_peers.txt")); err == nil {
+		// apply persistent_peers.txt to config.toml
+		persistentPeers, err := os.ReadFile(filepath.Join(configDir, "persistent_peers.txt"))
+		if err != nil {
+			return fmt.Errorf("failed to read persistent_peers.txt: %w", err)
+		}
+		configToml, err := os.ReadFile(filepath.Join(configDir, "config.toml"))
+		if err != nil {
+			return fmt.Errorf("failed to read config.toml: %w", err)
+		}
+		lines := strings.Split(string(configToml), "\n")
+		for i, line := range lines {
+			if strings.HasPrefix(line, "persistent_peers =") {
+				lines[i] = "persistent_peers = \"" + string(strings.Trim(strings.Trim(string(persistentPeers), " "), "\"")) + "\""
+				break
+			}
+		}
+		err = os.WriteFile(filepath.Join(configDir, "config.toml"), []byte(strings.Join(lines, "\n")), 0o644)
+		if err != nil {
+			return fmt.Errorf("failed to write config.toml: %w", err)
+		}
+	}
+
+	// write new priv_validator_state.json if not exists
+	if _, err := os.Stat(filepath.Join(dataDir, "priv_validator_state.json")); os.IsNotExist(err) {
+		err = os.WriteFile(filepath.Join(dataDir, "priv_validator_state.json"), []byte("{\"height\":\"0\",\"round\":0,\"step\":0}"), 0o644)
+		if err != nil {
+			return fmt.Errorf("failed to write priv_validator_state.json: %w", err)
+		}
+	}
+
+	bm.logger.Info("Successfully installed snapshot", "file", fileName)
+	return nil
+}
+
+func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backupDir string) (string, error) {
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
 	backupName := fmt.Sprintf("snapshot_%d_%s", height, timestamp)
 
+	configToml, err := os.ReadFile(filepath.Join(rootDir, "config", "config.toml"))
+	if err != nil {
+		return "", fmt.Errorf("failed to read config.toml: %w", err)
+	}
+	// retrieve persistent_peers from config.toml
+	persistentPeers := ""
+	lines := strings.Split(string(configToml), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "persistent_peers =") {
+			persistentPeers = strings.TrimPrefix(line, "persistent_peers =")
+			break
+		}
+	}
+	// trim quotes
+	persistentPeers = strings.Trim(strings.Trim(persistentPeers, " "), "\"")
+	err = os.WriteFile(filepath.Join(rootDir, "config", "persistent_peers.txt"), []byte(persistentPeers), 0o644)
+	if err != nil {
+		return "", fmt.Errorf("failed to write persistent_peers.txt: %w", err)
+	}
+
 	dataDir := filepath.Join(rootDir, "data")
 	configDir := filepath.Join(rootDir, "config")
-	dbFilesToIncludeInSnapshot := []string{"application.db", "blockstore.db", "state.db"}
-	configFilesToIncludeInSnapshot := []string{"genesis.json"}
+	dbFilesToIncludeInSnapshot := []string{"application.db", "blockstore.db", "state.db", "metadata.json"}
+	configFilesToIncludeInSnapshot := []string{"genesis.json", "addrbook.json", "persistent_peers.txt"}
 
-	err := bm.deleteOldSnapshots(backupDir, bm.minRetainBackups)
+	err = bm.deleteOldSnapshots(backupDir, bm.minRetainBackups)
 	if err != nil {
-		return fmt.Errorf("failed to delete old snapshots: %w", err)
+		return "", fmt.Errorf("failed to delete old snapshots: %w", err)
 	}
 
 	err = bm.createTarGzArchiveOfSelectedFilesAndDirs(filepath.Join(backupDir, backupName+".tar.gz"), []string{dataDir, configDir}, [][]string{dbFilesToIncludeInSnapshot, configFilesToIncludeInSnapshot})
 	if err != nil {
-		return fmt.Errorf("failed to create snapshot data archive: %w", err)
+		return "", fmt.Errorf("failed to create snapshot data archive: %w", err)
 	}
 
-	return nil
+	return filepath.Join(backupDir, backupName+".tar.gz"), nil
 }
 
 func (bm *BackupManager) deleteOldSnapshots(backupDir string, minRetainBackups uint64) error {
@@ -216,12 +392,12 @@ func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(archivePath st
 	for i, sourceDir := range sourceDirs {
 		err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return err
+				return nil
 			}
 
 			header, err := tar.FileInfoHeader(info, "")
 			if err != nil {
-				return err
+				return nil
 			}
 
 			// Check if the path is in the list of files and directories to include
@@ -240,6 +416,13 @@ func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(archivePath st
 			if err != nil {
 				return err
 			}
+
+			// get dir of sourceDir
+			sourceDirName := filepath.Base(sourceDir)
+
+			// Prefix all paths with "backup/" to ensure tar doesn't create unwanted directories
+			relPath = "backup/" + sourceDirName + "/" + relPath
+
 			header.Name = relPath
 
 			if err := tarWriter.WriteHeader(header); err != nil {
@@ -249,7 +432,7 @@ func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(archivePath st
 			if info.Mode().IsRegular() {
 				file, err := os.Open(path)
 				if err != nil {
-					return err
+					return nil
 				}
 
 				_, copyErr := io.Copy(tarWriter, file)

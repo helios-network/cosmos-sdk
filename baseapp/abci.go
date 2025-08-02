@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/errors"
 	abci "github.com/cometbft/cometbft/abci/types"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cometbfttypes "github.com/cometbft/cometbft/types"
 	"github.com/cosmos/gogoproto/proto"
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -968,6 +969,10 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 		}
 	}
 
+	if app.archiveMode {
+		retainHeight = cometbfttypes.SetRetainHeightArchiveFlag(retainHeight)
+	}
+
 	resp := &abci.ResponseCommit{
 		RetainHeight: retainHeight,
 	}
@@ -1001,7 +1006,7 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	app.snapshotManager.SnapshotIfApplicable(header.Height)
 
 	// prune application, statedb, blockstore
-	app.pruneApplication(retainHeight)
+	app.pruneApplication(retainHeight, header.Height)
 
 	return resp, nil
 }
@@ -1060,10 +1065,10 @@ func (app *BaseApp) triggerBackupAfterWorkingHash(height int64) {
 		return
 	}
 
-	if err := app.performBackup(height); err != nil {
+	if backupPath, err := app.PerformBackup(height); err != nil {
 		app.logger.Error("Backup failed", "height", height, "error", err)
 	} else {
-		app.logger.Info("Backup completed successfully", "height", height)
+		app.logger.Info("Backup completed successfully", "height", height, "backupPath", backupPath)
 	}
 }
 

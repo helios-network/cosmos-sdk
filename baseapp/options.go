@@ -408,3 +408,7 @@ func SetBackupConfig(enabled bool, blockInterval uint64, backupDir string, minRe
 func SetRootDir(rootDir string) func(*BaseApp) {
 	return func(app *BaseApp) { app.SetRootDir(rootDir) }
 }
+
+func SetArchiveMode(archiveMode bool) func(*BaseApp) {
+	return func(app *BaseApp) { app.SetArchiveMode(archiveMode) }
+}
