@@ -916,7 +916,8 @@ func (app *BaseApp) FinalizeBlock(req *abci.RequestFinalizeBlock) (res *abci.Res
 	if res != nil {
 		res.AppHash = app.workingHash()
 
-		app.triggerBackupAfterWorkingHash(req.Height)
+		// trigger backup (height - 1 because the backup is triggered before commit) (to be sure the state is flushed to disk and next apphash is correct)
+		app.triggerBackupAfterWorkingHash(req.Height - 1)
 	}
 
 	return res, err
@@ -1064,6 +1065,9 @@ func (app *BaseApp) triggerBackupAfterWorkingHash(height int64) {
 		app.logger.Warn("Backup skipped: finalizeBlockState is nil", "height", height)
 		return
 	}
+
+	// wait for the state to be flushed to disk
+	time.Sleep(5000 * time.Millisecond)
 
 	if backupPath, err := app.PerformBackup(height); err != nil {
 		app.logger.Error("Backup failed", "height", height, "error", err)

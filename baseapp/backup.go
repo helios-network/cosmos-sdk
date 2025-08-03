@@ -258,11 +258,9 @@ func (bm *BackupManager) installSnapshot(fileName string) error {
 	}
 
 	// write new priv_validator_state.json if not exists
-	if _, err := os.Stat(filepath.Join(dataDir, "priv_validator_state.json")); os.IsNotExist(err) {
-		err = os.WriteFile(filepath.Join(dataDir, "priv_validator_state.json"), []byte("{\"height\":\"0\",\"round\":0,\"step\":0}"), 0o644)
-		if err != nil {
-			return fmt.Errorf("failed to write priv_validator_state.json: %w", err)
-		}
+	err = os.WriteFile(filepath.Join(dataDir, "priv_validator_state.json"), []byte("{\"height\":\"0\",\"round\":0,\"step\":0}"), 0o644)
+	if err != nil {
+		return fmt.Errorf("failed to write priv_validator_state.json: %w", err)
 	}
 
 	bm.logger.Info("Successfully installed snapshot", "file", fileName)
@@ -305,6 +303,11 @@ func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backu
 
 	err = bm.createTarGzArchiveOfSelectedFilesAndDirs(filepath.Join(backupDir, backupName+".tar.gz"), []string{dataDir, configDir}, [][]string{dbFilesToIncludeInSnapshot, configFilesToIncludeInSnapshot})
 	if err != nil {
+		if strings.Contains(err.Error(), "no such file or directory") {
+			time.Sleep(1000 * time.Millisecond)
+			bm.logger.Info("Retrying to create snapshot data archive", "error", err)
+			return bm.createBackupArchive(rootDir, height, backupDir)
+		}
 		return "", fmt.Errorf("failed to create snapshot data archive: %w", err)
 	}
 
@@ -392,12 +395,12 @@ func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(archivePath st
 	for i, sourceDir := range sourceDirs {
 		err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return nil
+				return err
 			}
 
 			header, err := tar.FileInfoHeader(info, "")
 			if err != nil {
-				return nil
+				return err
 			}
 
 			// Check if the path is in the list of files and directories to include
@@ -432,7 +435,7 @@ func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(archivePath st
 			if info.Mode().IsRegular() {
 				file, err := os.Open(path)
 				if err != nil {
-					return nil
+					return err
 				}
 
 				_, copyErr := io.Copy(tarWriter, file)
@@ -446,6 +449,8 @@ func (bm *BackupManager) createTarGzArchiveOfSelectedFilesAndDirs(archivePath st
 		})
 
 		if err != nil {
+			// remove archive file
+			os.Remove(archivePath)
 			return err
 		}
 	}

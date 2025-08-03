@@ -3,6 +3,7 @@ package backups
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"cosmossdk.io/store/rootmulti"
 	dbm "github.com/cosmos/cosmos-db"
@@ -33,11 +34,17 @@ func DumpCmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.C
 			if err != nil {
 				return err
 			}
-			defer db.Close()
 
 			// Create the app using the appCreator
 			app := appCreator(serverCtx.Logger, db, nil, serverCtx.Viper)
 			latestVersion := rootmulti.GetLatestVersion(db)
+
+			// close db
+			if err := db.Close(); err != nil {
+				return fmt.Errorf("failed to close db: %w", err)
+			}
+
+			time.Sleep(5000 * time.Millisecond)
 
 			// Configure backup settings
 			backupEnabled := false
