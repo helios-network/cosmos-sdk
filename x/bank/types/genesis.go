@@ -75,16 +75,15 @@ func (gs GenesisState) Validate() error {
 			return err
 		}
 
-		// TODO: testnet fix including hyperions supply
-		// for _, coin := range gs.Supply {
-		// 	if totalSupply.AmountOf(coin.Denom) != coin.Amount {
-		// 		return fmt.Errorf("%s => %v, got %v, lost %v", coin.Denom, coin.Amount, totalSupply.AmountOf(coin.Denom), coin.Amount.Sub(totalSupply.AmountOf(coin.Denom)))
-		// 	}
-		// }
+		for _, coin := range gs.Supply {
+			if totalSupply.AmountOf(coin.Denom) != coin.Amount {
+				return fmt.Errorf("%s => %v, got %v, lost %v", coin.Denom, coin.Amount, totalSupply.AmountOf(coin.Denom), coin.Amount.Sub(totalSupply.AmountOf(coin.Denom)))
+			}
+		}
 
-		// if !gs.Supply.Equal(totalSupply) {
-		// 	return fmt.Errorf("genesis supply is incorrect, expected %v, got %v", gs.Supply, totalSupply)
-		// }
+		if !gs.Supply.Equal(totalSupply) {
+			return fmt.Errorf("genesis supply is incorrect, expected %v, got %v", gs.Supply, totalSupply)
+		}
 	}
 
 	return nil
