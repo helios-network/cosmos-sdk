@@ -21,6 +21,15 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 	defer telemetry.ModuleMeasureSince(types.ModuleName, telemetry.Now(), telemetry.MetricKeyEndBlocker)
 
 	logger := ctx.Logger().With("module", "x/"+types.ModuleName)
+
+	// Check if we need to initialize the proposal count system at activation height
+	if ctx.BlockHeight() == keeper.GetProposalsCountActivationHeight() {
+		if err := keeper.InitializeProposalsCount(ctx); err != nil {
+			logger.Error("failed to initialize proposals count system", "error", err)
+			return err
+		}
+		logger.Info("proposals count system activated and initialized", "height", ctx.BlockHeight())
+	}
 	// delete dead proposals from store and returns theirs deposits.
 	// A proposal is dead when it's inactive and didn't get enough deposit on time to get into voting phase.
 	rng := collections.NewPrefixUntilPairRange[time.Time, uint64](ctx.BlockTime())

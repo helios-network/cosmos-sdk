@@ -108,6 +108,13 @@ func (keeper Keeper) SubmitProposal(ctx context.Context, messages []sdk.Msg, met
 	if err != nil {
 		return v1.Proposal{}, err
 	}
+	if keeper.IsProposalCountSystemActive(ctx) {
+		err = keeper.IncrementProposalsCount(ctx)
+		if err != nil {
+			return v1.Proposal{}, err
+		}
+	}
+
 	err = keeper.InactiveProposalsQueue.Set(ctx, collections.Join(*proposal.DepositEndTime, proposalID), proposalID)
 	if err != nil {
 		return v1.Proposal{}, err
@@ -230,6 +237,14 @@ func (keeper Keeper) DeleteProposal(ctx context.Context, proposalID uint64) erro
 		}
 
 		err = keeper.VotingPeriodProposals.Remove(ctx, proposalID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Decrement the proposals count (only if system is active)
+	if keeper.IsProposalCountSystemActive(ctx) {
+		err = keeper.DecrementProposalsCount(ctx)
 		if err != nil {
 			return err
 		}
