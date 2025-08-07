@@ -11,7 +11,7 @@ import (
 
 // TODO: REMOVE AFTER HARD RESET
 // ProposalsCountActivationHeight defines the block height at which the optimized proposal count system is activated
-const ProposalsCountActivationHeight = 150000
+const ProposalsCountActivationHeight = 150057
 
 // GetProposalsCount returns the current count of existing proposals
 func (k Keeper) GetProposalsCount(ctx context.Context) (uint64, error) {
