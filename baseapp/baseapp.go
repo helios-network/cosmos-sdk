@@ -576,8 +576,26 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 }
 
 func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
-	app.logger.Info("pruning application")
 	retainHeightNumber := cometbfttypes.GetRetainHeightWithoutFlags(retainHeight)
+
+	// Check if we should prune based on the pruning interval
+	pruningOpts := app.cms.GetPruning()
+	if pruningOpts.Interval == 0 {
+		app.logger.Debug("pruning application skipped: interval is 0 (pruning disabled)")
+		return
+	}
+
+	// Only prune if current height is a multiple of the pruning interval
+	if currentHeight%int64(pruningOpts.Interval) != 0 {
+		app.logger.Debug("pruning application skipped: current height is not a multiple of pruning interval",
+			"currentHeight", currentHeight,
+			"pruningInterval", pruningOpts.Interval)
+		return
+	}
+
+	app.logger.Info("pruning application triggered: current height is a multiple of pruning interval",
+		"currentHeight", currentHeight,
+		"pruningInterval", pruningOpts.Interval)
 
 	// Define storage range possible for the state (max 100 blocks, min 10 blocks)
 	maxHeightStateToRetain := currentHeight - 3000
@@ -587,6 +605,10 @@ func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 		heightStateToRetain = maxHeightStateToRetain
 	} else if heightStateToRetain > minHeightStateToRetain {
 		heightStateToRetain = minHeightStateToRetain
+	}
+
+	if retainHeightNumber <= 0 {
+		return
 	}
 
 	// Prune main store

@@ -472,7 +472,7 @@ func (s *ABCIUtilsTestSuite) TestDefaultProposalHandler_NoOpMempoolTxSelection()
 
 	// create a baseapp along with a tx config for tx generation
 	txConfig := authtx.NewTxConfig(cdc, authtx.DefaultSignModes)
-	app := baseapp.NewBaseApp(s.T().Name(), log.NewNopLogger(), dbm.NewMemDB(), txConfig.TxDecoder())
+	app := baseapp.NewBaseApp(s.T().Name(), log.NewNopLogger(), dbm.NewMemDB(), nil, txConfig.TxDecoder())
 
 	// create a proposal handler
 	ph := baseapp.NewDefaultProposalHandler(mempool.NoOpMempool{}, app)

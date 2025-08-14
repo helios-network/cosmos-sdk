@@ -80,7 +80,7 @@ func TestABCI_InitChain(t *testing.T) {
 	name := t.Name()
 	db := dbm.NewMemDB()
 	logger := log.NewTestLogger(t)
-	app := baseapp.NewBaseApp(name, logger, db, nil, baseapp.SetChainID("test-chain-id"))
+	app := baseapp.NewBaseApp(name, logger, db, nil, nil, baseapp.SetChainID("test-chain-id"))
 
 	capKey := storetypes.NewKVStoreKey("main")
 	capKey2 := storetypes.NewKVStoreKey("key2")
@@ -152,7 +152,7 @@ func TestABCI_InitChain(t *testing.T) {
 	require.Equal(t, value, resQ.Value)
 
 	// reload app
-	app = baseapp.NewBaseApp(name, logger, db, nil)
+	app = baseapp.NewBaseApp(name, logger, db, nil, nil)
 	app.SetInitChainer(initChainer)
 	app.MountStores(capKey, capKey2)
 	err = app.LoadLatestVersion() // needed to make stores non-nil
@@ -178,7 +178,7 @@ func TestABCI_InitChain(t *testing.T) {
 func TestABCI_InitChain_WithInitialHeight(t *testing.T) {
 	name := t.Name()
 	db := dbm.NewMemDB()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil, nil)
 
 	_, err := app.InitChain(
 		&abci.RequestInitChain{
@@ -195,7 +195,7 @@ func TestABCI_InitChain_WithInitialHeight(t *testing.T) {
 func TestABCI_FinalizeBlock_WithInitialHeight(t *testing.T) {
 	name := t.Name()
 	db := dbm.NewMemDB()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil, nil)
 
 	_, err := app.InitChain(
 		&abci.RequestInitChain{
@@ -218,7 +218,7 @@ func TestABCI_FinalizeBlock_WithInitialHeight(t *testing.T) {
 func TestABCI_FinalizeBlock_WithBeginAndEndBlocker(t *testing.T) {
 	name := t.Name()
 	db := dbm.NewMemDB()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil, nil)
 
 	app.SetBeginBlocker(func(ctx sdk.Context) (sdk.BeginBlock, error) {
 		return sdk.BeginBlock{
@@ -285,7 +285,7 @@ func TestABCI_FinalizeBlock_WithBeginAndEndBlocker(t *testing.T) {
 func TestABCI_ExtendVote(t *testing.T) {
 	name := t.Name()
 	db := dbm.NewMemDB()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil, nil)
 
 	app.SetExtendVoteHandler(func(ctx sdk.Context, req *abci.RequestExtendVote) (*abci.ResponseExtendVote, error) {
 		voteExt := "foo" + hex.EncodeToString(req.Hash) + strconv.FormatInt(req.Height, 10)
@@ -368,7 +368,7 @@ func TestABCI_ExtendVote(t *testing.T) {
 func TestABCI_OnlyVerifyVoteExtension(t *testing.T) {
 	name := t.Name()
 	db := dbm.NewMemDB()
-	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil)
+	app := baseapp.NewBaseApp(name, log.NewTestLogger(t), db, nil, nil)
 
 	app.SetVerifyVoteExtensionHandler(func(ctx sdk.Context, req *abci.RequestVerifyVoteExtension) (*abci.ResponseVerifyVoteExtension, error) {
 		// do some kind of verification here
@@ -509,7 +509,7 @@ func TestBaseApp_PrepareCheckState(t *testing.T) {
 		},
 	}
 
-	app := baseapp.NewBaseApp(name, logger, db, nil)
+	app := baseapp.NewBaseApp(name, logger, db, nil, nil)
 	app.SetParamStore(&paramStore{db: dbm.NewMemDB()})
 	_, err := app.InitChain(&abci.RequestInitChain{
 		ConsensusParams: cp,
@@ -538,7 +538,7 @@ func TestBaseApp_Precommit(t *testing.T) {
 		},
 	}
 
-	app := baseapp.NewBaseApp(name, logger, db, nil)
+	app := baseapp.NewBaseApp(name, logger, db, nil, nil)
 	app.SetParamStore(&paramStore{db: dbm.NewMemDB()})
 	_, err := app.InitChain(&abci.RequestInitChain{
 		ConsensusParams: cp,
@@ -1247,20 +1247,20 @@ func TestABCI_GetBlockRetentionHeight(t *testing.T) {
 		expected     int64
 	}{
 		"defaults": {
-			bapp:         baseapp.NewBaseApp(name, logger, db, nil),
+			bapp:         baseapp.NewBaseApp(name, logger, db, nil, nil),
 			maxAgeBlocks: 0,
 			commitHeight: 499000,
 			expected:     0,
 		},
 		"pruning unbonding time only": {
-			bapp:         baseapp.NewBaseApp(name, logger, db, nil, baseapp.SetMinRetainBlocks(1)),
+			bapp:         baseapp.NewBaseApp(name, logger, db, nil, nil, baseapp.SetMinRetainBlocks(1)),
 			maxAgeBlocks: 362880,
 			commitHeight: 499000,
 			expected:     136120,
 		},
 		"pruning iavl snapshot only": {
 			bapp: baseapp.NewBaseApp(
-				name, logger, db, nil,
+				name, logger, db, nil, nil,
 				baseapp.SetPruning(pruningtypes.NewPruningOptions(pruningtypes.PruningNothing)),
 				baseapp.SetMinRetainBlocks(1),
 				baseapp.SetSnapshot(snapshotStore, snapshottypes.NewSnapshotOptions(10000, 1)),
@@ -1271,7 +1271,7 @@ func TestABCI_GetBlockRetentionHeight(t *testing.T) {
 		},
 		"pruning state sync snapshot only": {
 			bapp: baseapp.NewBaseApp(
-				name, logger, db, nil,
+				name, logger, db, nil, nil,
 				baseapp.SetSnapshot(snapshotStore, snapshottypes.NewSnapshotOptions(50000, 3)),
 				baseapp.SetMinRetainBlocks(1),
 			),
@@ -1281,7 +1281,7 @@ func TestABCI_GetBlockRetentionHeight(t *testing.T) {
 		},
 		"pruning min retention only": {
 			bapp: baseapp.NewBaseApp(
-				name, logger, db, nil,
+				name, logger, db, nil, nil,
 				baseapp.SetMinRetainBlocks(400000),
 			),
 			maxAgeBlocks: 0,
@@ -1290,7 +1290,7 @@ func TestABCI_GetBlockRetentionHeight(t *testing.T) {
 		},
 		"pruning all conditions": {
 			bapp: baseapp.NewBaseApp(
-				name, logger, db, nil,
+				name, logger, db, nil, nil,
 				baseapp.SetPruning(pruningtypes.NewCustomPruningOptions(0, 0)),
 				baseapp.SetMinRetainBlocks(400000),
 				baseapp.SetSnapshot(snapshotStore, snapshottypes.NewSnapshotOptions(50000, 3)),
@@ -1301,7 +1301,7 @@ func TestABCI_GetBlockRetentionHeight(t *testing.T) {
 		},
 		"no pruning due to no persisted state": {
 			bapp: baseapp.NewBaseApp(
-				name, logger, db, nil,
+				name, logger, db, nil, nil,
 				baseapp.SetPruning(pruningtypes.NewCustomPruningOptions(0, 0)),
 				baseapp.SetMinRetainBlocks(400000),
 				baseapp.SetSnapshot(snapshotStore, snapshottypes.NewSnapshotOptions(50000, 3)),
@@ -1312,7 +1312,7 @@ func TestABCI_GetBlockRetentionHeight(t *testing.T) {
 		},
 		"disable pruning": {
 			bapp: baseapp.NewBaseApp(
-				name, logger, db, nil,
+				name, logger, db, nil, nil,
 				baseapp.SetPruning(pruningtypes.NewCustomPruningOptions(0, 0)),
 				baseapp.SetMinRetainBlocks(0),
 				baseapp.SetSnapshot(snapshotStore, snapshottypes.NewSnapshotOptions(50000, 3)),
@@ -1349,7 +1349,7 @@ func TestPrepareCheckStateCalledWithCheckState(t *testing.T) {
 	logger := log.NewTestLogger(t)
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, logger, db, nil)
+	app := baseapp.NewBaseApp(name, logger, db, nil, nil)
 
 	wasPrepareCheckStateCalled := false
 	app.SetPrepareCheckStater(func(ctx sdk.Context) {
@@ -1372,7 +1372,7 @@ func TestPrecommiterCalledWithDeliverState(t *testing.T) {
 	logger := log.NewTestLogger(t)
 	db := dbm.NewMemDB()
 	name := t.Name()
-	app := baseapp.NewBaseApp(name, logger, db, nil)
+	app := baseapp.NewBaseApp(name, logger, db, nil, nil)
 
 	wasPrecommiterCalled := false
 	app.SetPrecommiter(func(ctx sdk.Context) {
@@ -2022,7 +2022,7 @@ func TestBaseApp_PreBlocker(t *testing.T) {
 	name := t.Name()
 	logger := log.NewTestLogger(t)
 
-	app := baseapp.NewBaseApp(name, logger, db, nil)
+	app := baseapp.NewBaseApp(name, logger, db, nil, nil)
 	_, err := app.InitChain(&abci.RequestInitChain{})
 	require.NoError(t, err)
 
@@ -2040,7 +2040,7 @@ func TestBaseApp_PreBlocker(t *testing.T) {
 	require.Equal(t, true, wasHookCalled)
 
 	// Now try erroring
-	app = baseapp.NewBaseApp(name, logger, db, nil)
+	app = baseapp.NewBaseApp(name, logger, db, nil, nil)
 	_, err = app.InitChain(&abci.RequestInitChain{})
 	require.NoError(t, err)
 
