@@ -76,7 +76,7 @@ func (gs GenesisState) Validate() error {
 		}
 
 		for _, coin := range gs.Supply {
-			if totalSupply.AmountOf(coin.Denom) != coin.Amount {
+			if !totalSupply.AmountOf(coin.Denom).Equal(coin.Amount) {
 				return fmt.Errorf("%s => %v, got %v, lost %v", coin.Denom, coin.Amount, totalSupply.AmountOf(coin.Denom), coin.Amount.Sub(totalSupply.AmountOf(coin.Denom)))
 			}
 		}

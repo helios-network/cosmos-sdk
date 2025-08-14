@@ -580,7 +580,7 @@ func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 	retainHeightNumber := cometbfttypes.GetRetainHeightWithoutFlags(retainHeight)
 
 	// Define storage range possible for the state (max 100 blocks, min 10 blocks)
-	maxHeightStateToRetain := currentHeight - 100
+	maxHeightStateToRetain := currentHeight - 3000
 	minHeightStateToRetain := currentHeight - 10
 	heightStateToRetain := retainHeightNumber
 	if heightStateToRetain < maxHeightStateToRetain {
