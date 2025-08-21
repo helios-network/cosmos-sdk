@@ -82,7 +82,7 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper) error {
 
 	// Create coins to mint
 	mintedCoins := sdk.NewCoins(sdk.NewCoin(bondDenom, mintPerBlock.TruncateInt()))
-	sdkCtx.Logger().Info("New minted HELIOS coin per block", "info", mintedCoins)
+	sdkCtx.Logger().Debug("New minted HELIOS coin per block", "info", mintedCoins)
 
 	// Mint new HELIOS tokens
 	err = k.MintCoins(ctx, mintedCoins)

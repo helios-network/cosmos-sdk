@@ -252,15 +252,6 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			keeper.Logger(ctx).Error("failed to execute AfterProposalVotingPeriodEnded hook", "error", err)
 		}
 
-		logger.Info(
-			"proposal tallied",
-			"proposal", proposal.Id,
-			"status", proposal.Status.String(),
-			"expedited", proposal.Expedited,
-			"title", proposal.Title,
-			"results", logMsg,
-		)
-
 		ctx.EventManager().EmitEvent(
 			sdk.NewEvent(
 				types.EventTypeActiveProposal,

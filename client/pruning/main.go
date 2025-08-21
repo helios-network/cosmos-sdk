@@ -55,45 +55,91 @@ Supported app-db-backend types include 'goleveldb', 'rocksdb', 'pebbledb'.`,
 				return err
 			}
 
-			cmd.Printf("get pruning options from command flags, strategy: %v, keep-recent: %v\n",
-				pruningOptions.Strategy,
-				pruningOptions.KeepRecent,
-			)
+			from := vp.GetUint64("from")
+			to := vp.GetUint64("to")
 
-			home := vp.GetString(flags.FlagHome)
-			if home == "" {
-				home = defaultNodeHome
+			if from != to {
+
+				home := vp.GetString(flags.FlagHome)
+				if home == "" {
+					home = defaultNodeHome
+				}
+
+				db, err := openDB(home, server.GetAppDBBackend(vp))
+				if err != nil {
+					return err
+				}
+
+				logger := log.NewLogger(cmd.OutOrStdout())
+				app := appCreator(logger, db, nil, vp)
+				cms := app.CommitMultiStore()
+
+				rootMultiStore, ok := cms.(*rootmulti.Store)
+				if !ok {
+					return fmt.Errorf("currently only support the pruning of rootmulti.Store type")
+				}
+				latestHeight := rootmulti.GetLatestVersion(db)
+				// valid heights should be greater than 0.
+				if latestHeight < int64(to) {
+					return fmt.Errorf("the database has no valid heights to prune, the latest height: %v", latestHeight)
+				}
+
+				cmd.Printf("pruning heights up to %v\n", to)
+
+				for i := from; i <= to; i++ {
+					err = rootMultiStore.PruneStores(int64(i))
+					if err != nil {
+						return err
+					}
+					cmd.Printf("pruned height %v\n", i)
+				}
+
+				cmd.Println("successfully pruned the application root multi stores")
+				return nil
+
+			} else {
+
+				cmd.Printf("get pruning options from command flags, strategy: %v, keep-recent: %v\n",
+					pruningOptions.Strategy,
+					pruningOptions.KeepRecent,
+				)
+
+				home := vp.GetString(flags.FlagHome)
+				if home == "" {
+					home = defaultNodeHome
+				}
+
+				db, err := openDB(home, server.GetAppDBBackend(vp))
+				if err != nil {
+					return err
+				}
+
+				logger := log.NewLogger(cmd.OutOrStdout())
+				app := appCreator(logger, db, nil, vp)
+				cms := app.CommitMultiStore()
+
+				rootMultiStore, ok := cms.(*rootmulti.Store)
+				if !ok {
+					return fmt.Errorf("currently only support the pruning of rootmulti.Store type")
+				}
+				latestHeight := rootmulti.GetLatestVersion(db)
+				// valid heights should be greater than 0.
+				if latestHeight <= 0 {
+					return fmt.Errorf("the database has no valid heights to prune, the latest height: %v", latestHeight)
+				}
+
+				pruningHeight := latestHeight - int64(pruningOptions.KeepRecent)
+				cmd.Printf("pruning heights up to %v\n", pruningHeight)
+
+				err = rootMultiStore.PruneStores(pruningHeight)
+				if err != nil {
+					return err
+				}
+
+				cmd.Println("successfully pruned the application root multi stores")
+				return nil
+
 			}
-
-			db, err := openDB(home, server.GetAppDBBackend(vp))
-			if err != nil {
-				return err
-			}
-
-			logger := log.NewLogger(cmd.OutOrStdout())
-			app := appCreator(logger, db, nil, vp)
-			cms := app.CommitMultiStore()
-
-			rootMultiStore, ok := cms.(*rootmulti.Store)
-			if !ok {
-				return fmt.Errorf("currently only support the pruning of rootmulti.Store type")
-			}
-			latestHeight := rootmulti.GetLatestVersion(db)
-			// valid heights should be greater than 0.
-			if latestHeight <= 0 {
-				return fmt.Errorf("the database has no valid heights to prune, the latest height: %v", latestHeight)
-			}
-
-			pruningHeight := latestHeight - int64(pruningOptions.KeepRecent)
-			cmd.Printf("pruning heights up to %v\n", pruningHeight)
-
-			err = rootMultiStore.PruneStores(pruningHeight)
-			if err != nil {
-				return err
-			}
-
-			cmd.Println("successfully pruned the application root multi stores")
-			return nil
 		},
 	}
 
@@ -103,6 +149,10 @@ Supported app-db-backend types include 'goleveldb', 'rocksdb', 'pebbledb'.`,
 	cmd.Flags().Uint64(server.FlagPruningInterval, 10,
 		`Height interval at which pruned heights are removed from disk (ignored if pruning is not 'custom'), 
 		this is not used by this command but kept for compatibility with the complete pruning options`)
+	cmd.Flags().Uint64("from", 1,
+		`Height from which to start pruning`)
+	cmd.Flags().Uint64("to", 1,
+		`Height to which to stop pruning`)
 
 	return cmd
 }

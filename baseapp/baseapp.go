@@ -25,6 +25,7 @@ import (
 	"cosmossdk.io/store"
 	"cosmossdk.io/store/archivekv"
 	storemetrics "cosmossdk.io/store/metrics"
+	"cosmossdk.io/store/rootmulti"
 	"cosmossdk.io/store/snapshots"
 	storetypes "cosmossdk.io/store/types"
 
@@ -577,6 +578,7 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 
 func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 	retainHeightNumber := cometbfttypes.GetRetainHeightWithoutFlags(retainHeight)
+	baseVersion := rootmulti.GetBaseVersion(app.db)
 
 	// Check if we should prune based on the pruning interval
 	pruningOpts := app.cms.GetPruning()
@@ -585,34 +587,39 @@ func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 		return
 	}
 
-	// Only prune if current height is a multiple of the pruning interval
-	if currentHeight%int64(pruningOpts.Interval) != 0 {
-		app.logger.Debug("pruning application skipped: current height is not a multiple of pruning interval",
-			"currentHeight", currentHeight,
-			"pruningInterval", pruningOpts.Interval)
-		return
-	}
+	// // Only prune if current height is a multiple of the pruning interval
+	// if currentHeight%int64(pruningOpts.Interval) != 0 {
+	// 	app.logger.Debug("pruning application skipped: current height is not a multiple of pruning interval",
+	// 		"currentHeight", currentHeight,
+	// 		"pruningInterval", pruningOpts.Interval)
+	// 	return
+	// }
 
-	app.logger.Info("pruning application triggered: current height is a multiple of pruning interval",
-		"currentHeight", currentHeight,
-		"pruningInterval", pruningOpts.Interval)
+	// app.logger.Info("pruning application triggered: current height is a multiple of pruning interval",
+	// 	"currentHeight", currentHeight,
+	// 	"pruningInterval", pruningOpts.Interval)
 
 	// Define storage range possible for the state (max 100 blocks, min 10 blocks)
-	maxHeightStateToRetain := currentHeight - 3000
-	minHeightStateToRetain := currentHeight - 10
-	heightStateToRetain := retainHeightNumber
-	if heightStateToRetain < maxHeightStateToRetain {
-		heightStateToRetain = maxHeightStateToRetain
-	} else if heightStateToRetain > minHeightStateToRetain {
-		heightStateToRetain = minHeightStateToRetain
-	}
+	// maxHeightStateToRetain := currentHeight - 3000
+	// minHeightStateToRetain := currentHeight - 10
+	// heightStateToRetain := retainHeightNumber
+	// if heightStateToRetain < maxHeightStateToRetain {
+	// 	heightStateToRetain = maxHeightStateToRetain
+	// } else if heightStateToRetain > minHeightStateToRetain {
+	// 	heightStateToRetain = minHeightStateToRetain
+	// }
 
 	if retainHeightNumber <= 0 {
 		return
 	}
 
+	if baseVersion+100 < retainHeightNumber {
+		retainHeightNumber = baseVersion + 100
+		fmt.Println("pruning application 100 blocks from", baseVersion, "to", retainHeightNumber)
+	}
+
 	// Prune main store
-	if err := app.cms.DeleteFromBaseVersionTo(heightStateToRetain); err != nil {
+	if err := app.cms.DeleteFromBaseVersionTo(retainHeightNumber); err != nil {
 		app.logger.Error("failed to prune main store", "error", err)
 	}
 

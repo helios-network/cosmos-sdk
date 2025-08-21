@@ -8,6 +8,8 @@ import (
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/util"
 
 	"cosmossdk.io/log"
 	"cosmossdk.io/store/rootmulti"
@@ -27,7 +29,7 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 		Use:     "application-db [method]",
 		Short:   "Apply a method to the application database",
 		Long:    `Apply a method to the application database`,
-		Example: "application-db [list,load-version,info,trace]",
+		Example: "application-db [list,load-version,info,trace,size]",
 		Args:    cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// bind flags to the Context's Viper so we can get pruning options.
@@ -144,6 +146,49 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 					return err
 				}
 				cmd.Printf("%v", string(trace))
+			} else if method == "size" {
+				db.Close()
+				appDB := filepath.Join(home, "data/application.db")
+				db, err := leveldb.OpenFile(appDB, nil)
+				if err != nil {
+					return err
+				}
+				defer db.Close()
+				it := db.NewIterator(nil, nil)
+				sizes := make(map[string]int64)
+
+				for it.Next() {
+					k := it.Key()
+					v := it.Value()
+					if len(k) >= 20 {
+						prefix := string(k[:20])
+						sizes[prefix] += int64(len(k) + len(v))
+					} else if len(k) > 0 {
+						prefix := string(k)
+						sizes[prefix] += int64(len(k) + len(v))
+					}
+				}
+				it.Release()
+
+				for p, sz := range sizes {
+					// affiche uniquement si supérieur à 10Mi
+					if sz > 10*1024*1024 {
+						fmt.Printf("Prefix %x: %.2f MiB\n", p, float64(sz)/(1024*1024))
+					}
+				}
+			} else if method == "compact" {
+				db.Close()
+				appDB := filepath.Join(home, "data/application.db")
+				db, err := leveldb.OpenFile(appDB, nil)
+				if err != nil {
+					return err
+				}
+				defer db.Close()
+				err = db.CompactRange(util.Range{Start: nil, Limit: nil})
+				if err != nil {
+					return err
+				}
+				cmd.Printf("compacted\n")
 			}
 			return nil
 		},
@@ -154,6 +199,23 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 	cmd.Flags().String(FlagAppDBBackend, "", "The type of database for application and snapshots databases")
 
 	return cmd
+}
+
+func guessStoreNameFromKey(k []byte) string {
+	// Lis des ASCII imprimables [32..126] jusqu'à un séparateur probable.
+	// Beaucoup de builds utilisent un séparateur '/' ou un 0x00 après le nom du store.
+	n := 0
+	for n < len(k) {
+		b := k[n]
+		if b == '/' || b == 0x00 || b < 32 || b > 126 {
+			break
+		}
+		n++
+	}
+	if n == 0 {
+		return "(unknown)"
+	}
+	return string(k[:n])
 }
 
 func openDBApplication(rootDir string, backendType dbm.BackendType) (dbm.DB, error) {
