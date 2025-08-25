@@ -28,6 +28,23 @@ func NewHistoricalInfo(header cmtproto.Header, valSet Validators, powerReduction
 	}
 }
 
+// NewHistoricalInfoWithInactiveValidators creates historical info with active and inactive validators
+func NewHistoricalInfoWithInactiveValidators(header cmtproto.Header, activeValSet Validators, inactiveValSet Validators, powerReduction math.Int) HistoricalInfo {
+	sort.SliceStable(activeValSet.Validators, func(i, j int) bool {
+		return ValidatorsByVotingPower(activeValSet.Validators).Less(i, j, powerReduction)
+	})
+
+	sort.SliceStable(inactiveValSet.Validators, func(i, j int) bool {
+		return ValidatorsByVotingPower(inactiveValSet.Validators).Less(i, j, powerReduction)
+	})
+
+	return HistoricalInfo{
+		Header:         header,
+		Valset:         activeValSet.Validators,
+		InactiveValset: inactiveValSet.Validators,
+	}
+}
+
 // MustUnmarshalHistoricalInfo wll unmarshal historical info and panic on error
 func MustUnmarshalHistoricalInfo(cdc codec.BinaryCodec, value []byte) HistoricalInfo {
 	hi, err := UnmarshalHistoricalInfo(cdc, value)
@@ -54,6 +71,10 @@ func ValidateBasic(hi HistoricalInfo, valAc address.Codec) error {
 		return errors.Wrap(ErrInvalidHistoricalInfo, "validator set is not sorted by address")
 	}
 
+	if len(hi.InactiveValset) > 0 && !sort.IsSorted(Validators{Validators: hi.InactiveValset, ValidatorCodec: valAc}) {
+		return errors.Wrap(ErrInvalidHistoricalInfo, "inactive validator set is not sorted by address")
+	}
+
 	return nil
 }
 
@@ -70,6 +91,14 @@ func (hi *HistoricalInfo) Equal(hi2 *HistoricalInfo) bool {
 			return false
 		}
 	}
+	if len(hi.InactiveValset) != len(hi2.InactiveValset) {
+		return false
+	}
+	for i := range hi.InactiveValset {
+		if !hi.InactiveValset[i].Equal(&hi2.InactiveValset[i]) {
+			return false
+		}
+	}
 	return true
 }
 
@@ -77,6 +106,11 @@ func (hi *HistoricalInfo) Equal(hi2 *HistoricalInfo) bool {
 func (hi HistoricalInfo) UnpackInterfaces(c codectypes.AnyUnpacker) error {
 	for i := range hi.Valset {
 		if err := hi.Valset[i].UnpackInterfaces(c); err != nil {
+			return err
+		}
+	}
+	for i := range hi.InactiveValset {
+		if err := hi.InactiveValset[i].UnpackInterfaces(c); err != nil {
 			return err
 		}
 	}
