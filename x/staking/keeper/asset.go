@@ -9,6 +9,11 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
+const (
+	// TODO: REMOVE WHEN MAINNET IS READY
+	ASSET_WEIGHTS_OPTIMIZATION_BLOCK = 250000
+)
+
 func (k Keeper) GetTreasuryAddress(ctx sdk.Context) (sdk.AccAddress, error) {
 	// Get the genesis validator address that's being used as treasury
 	params, err := k.GetParams(ctx)
@@ -70,7 +75,6 @@ func (k Keeper) AddOrUpdateAssetWeight(
 	bondDenom string, // erc20 or asset bondDenom
 	baseAmount math.Int,
 ) (*types.Delegation, error) {
-
 	// Validate inputs
 	if delegation == nil {
 		return nil, fmt.Errorf("delegation cannot be nil")
@@ -304,7 +308,7 @@ func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math
 					return fmt.Errorf("failed to decode delegator address: %w", err)
 				}
 
-				//TODO: Remove hooks calls if we don't want auto distrib of rewards on each updates (which may lead to extra useless comsuption)
+				// TODO: Remove hooks calls if we don't want auto distrib of rewards on each updates (which may lead to extra useless comsuption)
 				if err := k.Hooks().BeforeDelegationSharesModified(ctx, delAddr, sdk.ValAddress(valAddr)); err != nil {
 					return err
 				}
@@ -333,7 +337,30 @@ func (k Keeper) UpdateAssetWeight(ctx sdk.Context, denom string, percentage math
 
 		// Save updated validator
 		k.SetValidator(ctx, validator)
+
+		// Update validator asset weights cache after governance changes
+		if k.shouldUseOptimizedAssetWeights(ctx) {
+			total, err := k.GetValidatorAssetWeightsFromDelegations(ctx, validator)
+			if err == nil {
+				validator.TotalAssetWeights = total
+				k.SetValidator(ctx, validator)
+			}
+		}
 	}
 
 	return nil
+}
+
+// shouldUseOptimizedAssetWeights determines if we should use pre-calculated asset weights
+// instead of recalculating them from all delegations every time.
+//
+// OPTIMIZATION LOGIC:
+// - Before block 10: Always recalculate (legacy behavior)
+// - After block 10: Use cached TotalAssetWeights if available, otherwise recalculate once
+//
+// PERFORMANCE IMPACT:
+// - Legacy: O(total_delegations) per validator per block
+// - Optimized: O(1) per validator per block (when cached)
+func (k Keeper) shouldUseOptimizedAssetWeights(ctx sdk.Context) bool {
+	return ctx.BlockHeight() >= ASSET_WEIGHTS_OPTIMIZATION_BLOCK
 }

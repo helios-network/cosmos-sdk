@@ -671,12 +671,11 @@ func (k *Keeper) GetValidatorAssetWeightsFromDelegations(
 	for _, del := range delegations {
 		for _, aw := range del.AssetWeights {
 			if entry, exists := agg[aw.Denom]; exists {
-				// Update existing entry
+				// Aggregate asset weights
 				entry.BaseAmount = entry.BaseAmount.Add(aw.BaseAmount)
 				entry.WeightedAmount = entry.WeightedAmount.Add(aw.WeightedAmount)
 				agg[aw.Denom] = entry
 			} else {
-				// Create new entry with proper initialization
 				agg[aw.Denom] = types.AssetWeight{
 					Denom:          aw.Denom,
 					BaseAmount:     aw.BaseAmount,
@@ -700,4 +699,41 @@ func (k *Keeper) GetValidatorAssetWeightsFromDelegations(
 	}
 
 	return result, nil
+}
+
+func (k Keeper) GetInactiveValidators(ctx context.Context) ([]types.Validator, error) {
+	activeMap := make(map[string]bool)
+	iterator, err := k.LastValidatorsIterator(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		addr := types.AddressFromLastValidatorPowerKey(iterator.Key())
+		addrStr, err := k.validatorAddressCodec.BytesToString(addr)
+		if err != nil {
+			continue
+		}
+		activeMap[addrStr] = true
+	}
+
+	allValidators, err := k.GetAllValidators(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// CRITICAL: Sort validators for deterministic order
+	sort.SliceStable(allValidators, func(i, j int) bool {
+		return allValidators[i].GetOperator() < allValidators[j].GetOperator()
+	})
+
+	var inactiveVals []types.Validator
+	for _, validator := range allValidators {
+		if !activeMap[validator.GetOperator()] {
+			inactiveVals = append(inactiveVals, validator)
+		}
+	}
+
+	return inactiveVals, nil
 }
