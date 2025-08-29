@@ -180,7 +180,7 @@ func (k Querier) shareRepartitionMapFallback(ctx context.Context, _req *types.Qu
 				if shareRepartition, exists := shareRepartitionMap[asset.Denom]; exists {
 					shareRepartition.NetworkShares = shareRepartition.NetworkShares.Add(asset.WeightedAmount)
 
-					sdk.UnwrapSDKContext(ctx).Logger().Info("Asset", "asset.WeightedAmount", asset.WeightedAmount, "shareRepartition.NetworkShares", shareRepartition.NetworkShares)
+					sdk.UnwrapSDKContext(ctx).Logger().Debug("Asset", "asset.WeightedAmount", asset.WeightedAmount, "shareRepartition.NetworkShares", shareRepartition.NetworkShares)
 					shareRepartitionMap[asset.Denom] = shareRepartition
 				}
 			}
@@ -1241,7 +1241,7 @@ func (k Keeper) GetCurrentEpochHandler(ctx context.Context, req *types.QueryCurr
 		CurrentEpoch:       currentEpoch,
 		EpochLength:        epochLength,
 		LastEpochHeight:    lastEpochHeight,
-		ValidatorsPerEpoch:  validatorsPerEpoch,
+		ValidatorsPerEpoch: validatorsPerEpoch,
 		EpochEnabled:       epochEnabled,
 	}, nil
 }

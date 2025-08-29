@@ -1006,8 +1006,11 @@ func (app *BaseApp) Commit() (*abci.ResponseCommit, error) {
 	// The SnapshotIfApplicable method will create the snapshot by starting the goroutine
 	app.snapshotManager.SnapshotIfApplicable(header.Height)
 
+	app.logger.Info("Pruning application, statedb, blockstore")
 	// prune application, statedb, blockstore
 	app.pruneApplication(retainHeight, header.Height)
+
+	app.logger.Info("Pruning application, statedb, blockstore done")
 
 	return resp, nil
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
 	"cosmossdk.io/log"
@@ -50,13 +51,32 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 				home = defaultNodeHome
 			}
 
+			method := vp.GetString(FlagAppDBMethod)
+
+			if method == "compact" {
+				o := &opt.Options{
+					DisableSeeksCompaction: true,
+				}
+				appDB := filepath.Join(home, "data/application.db")
+				db, err := leveldb.OpenFile(appDB, o)
+				if err != nil {
+					return err
+				}
+				defer db.Close()
+				err = db.CompactRange(util.Range{Start: nil, Limit: nil})
+				if err != nil {
+					return err
+				}
+				cmd.Printf("compacted\n")
+				return nil
+			}
+
 			db, err := openDBApplication(defaultNodeHome, server.GetAppDBBackend(vp))
 			if err != nil {
 				return err
 			}
 			defer db.Close()
 
-			method := vp.GetString(FlagAppDBMethod)
 			if method == "list" {
 
 				// logger := log.NewLogger(cmd.OutOrStdout())
@@ -176,19 +196,6 @@ func Cmd(appCreator servertypes.AppCreator, defaultNodeHome string) *cobra.Comma
 						fmt.Printf("Prefix %x: %.2f MiB\n", p, float64(sz)/(1024*1024))
 					}
 				}
-			} else if method == "compact" {
-				db.Close()
-				appDB := filepath.Join(home, "data/application.db")
-				db, err := leveldb.OpenFile(appDB, nil)
-				if err != nil {
-					return err
-				}
-				defer db.Close()
-				err = db.CompactRange(util.Range{Start: nil, Limit: nil})
-				if err != nil {
-					return err
-				}
-				cmd.Printf("compacted\n")
 			}
 			return nil
 		},

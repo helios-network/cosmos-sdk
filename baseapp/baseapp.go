@@ -1,12 +1,14 @@
 package baseapp
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/Helios-Chain-Labs/metrics"
 	"github.com/cockroachdb/errors"
@@ -222,6 +224,9 @@ type BaseApp struct {
 	rootDir       string
 
 	archiveMode bool
+
+	compactor *Compactor
+	pruner    *Pruner
 }
 
 // NewBaseApp returns a reference to an initialized BaseApp. It accepts a
@@ -251,11 +256,15 @@ func NewBaseApp(
 		fauxMerkleMode:   false,
 		queryGasLimit:    math.MaxUint64,
 		StreamEvents:     make(chan StreamEvents),
+		compactor:        NewCompactor(db, logger.With("module", "baseapp.compactor")),
 	}
 
 	for _, option := range options {
 		option(app)
 	}
+
+	// Initialiser le pruner après les options pour avoir accès au cms final
+	app.pruner = NewPruner(app.cms, app.acms, logger.With("module", "baseapp.pruner"))
 
 	if app.mempool == nil {
 		app.SetMempool(mempool.NoOpMempool{})
@@ -578,7 +587,13 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 
 func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 	retainHeightNumber := cometbfttypes.GetRetainHeightWithoutFlags(retainHeight)
+	isArchive := cometbfttypes.IsRetainHeightArchive(retainHeight)
 	baseVersion := rootmulti.GetBaseVersion(app.db)
+
+	if isArchive {
+		app.logger.Debug("pruning application skipped: retain height is archive")
+		return
+	}
 
 	// Check if we should prune based on the pruning interval
 	pruningOpts := app.cms.GetPruning()
@@ -587,49 +602,160 @@ func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 		return
 	}
 
-	// // Only prune if current height is a multiple of the pruning interval
-	// if currentHeight%int64(pruningOpts.Interval) != 0 {
-	// 	app.logger.Debug("pruning application skipped: current height is not a multiple of pruning interval",
-	// 		"currentHeight", currentHeight,
-	// 		"pruningInterval", pruningOpts.Interval)
-	// 	return
-	// }
-
-	// app.logger.Info("pruning application triggered: current height is a multiple of pruning interval",
-	// 	"currentHeight", currentHeight,
-	// 	"pruningInterval", pruningOpts.Interval)
-
-	// Define storage range possible for the state (max 100 blocks, min 10 blocks)
-	// maxHeightStateToRetain := currentHeight - 3000
-	// minHeightStateToRetain := currentHeight - 10
-	// heightStateToRetain := retainHeightNumber
-	// if heightStateToRetain < maxHeightStateToRetain {
-	// 	heightStateToRetain = maxHeightStateToRetain
-	// } else if heightStateToRetain > minHeightStateToRetain {
-	// 	heightStateToRetain = minHeightStateToRetain
-	// }
-
 	if retainHeightNumber <= 0 {
 		return
 	}
 
 	if baseVersion+100 < retainHeightNumber {
 		retainHeightNumber = baseVersion + 100
-		fmt.Println("pruning application 100 blocks from", baseVersion, "to", retainHeightNumber)
+		app.logger.Info("pruning application 100 blocks", "from", baseVersion, "to", retainHeightNumber)
 	}
 
-	// Prune main store
-	if err := app.cms.DeleteFromBaseVersionTo(retainHeightNumber); err != nil {
-		app.logger.Error("failed to prune main store", "error", err)
+	// Enqueue pruning task asynchronously
+	_ = app.pruner.TryEnqueue(pruneTask{
+		retainHeight:  retainHeightNumber,
+		currentHeight: currentHeight,
+		label:         fmt.Sprintf("prune@h=%d", currentHeight),
+	})
+
+	// Compact application
+	app.compactApplication(currentHeight)
+}
+
+func (app *BaseApp) compactByChunks(db dbm.DB, bounds [][]byte, sleep time.Duration) error {
+	var prev []byte
+	for _, b := range bounds {
+		if err := forceCompact(db, prev, b); err != nil {
+			return err
+		}
+		time.Sleep(sleep)
+		prev = b
+	}
+	// dernier segment
+	return forceCompact(db, prev, nil)
+}
+
+// Interface locale : tout backend qui expose ForceCompact la satisfera.
+type forceCompacter interface {
+	ForceCompact(start, limit []byte) error
+}
+
+// Si tu as des wrappers (PrefixDB/CacheDB), on unwrap et on retente.
+type unwrap interface {
+	Unwrap() dbm.DB
+}
+
+func forceCompact(db dbm.DB, start, limit []byte) error {
+	// 1) Directement sur le backend
+	if fc, ok := db.(forceCompacter); ok {
+		return fc.ForceCompact(start, limit)
+	}
+	// 2) Si c'est un wrapper, on unwrap et on réessaie
+	if uw, ok := db.(unwrap); ok {
+		return forceCompact(uw.Unwrap(), start, limit)
+	}
+	// 3) Sinon : pas supporté par ce backend
+	return fmt.Errorf("backend does not expose ForceCompact")
+}
+
+// --- clef meta pour stocker le curseur
+var compactCursorKey = []byte("_compact_cursor_v1")
+
+// get/set du curseur dans la même DB (ou dans ta traceDB si tu préfères)
+func getCursor(db dbm.DB) ([]byte, error) {
+	v, err := db.Get(compactCursorKey)
+	if err != nil {
+		return nil, nil
+	}
+	if len(v) == 0 {
+		return nil, nil
+	}
+	cp := append([]byte(nil), v...)
+	return cp, nil
+}
+func setCursor(db dbm.DB, k []byte) error {
+	if k == nil || len(k) == 0 {
+		return db.Delete(compactCursorKey)
+	}
+	return db.Set(compactCursorKey, k)
+}
+
+func (app *BaseApp) CompactStepWithBudget(db dbm.DB, step int, maxDuration time.Duration) error {
+	// 1) récupère curseur
+	cursor, err := getCursor(db)
+	if err != nil {
+		return err
 	}
 
-	// // Prune archive stores with error handling
-	for name, acm := range app.acms {
-		if err := acm.DeleteFromBaseVersionTo(uint64(retainHeightNumber)); err != nil {
-			app.logger.Error("failed to prune archive store", "store", name, "error", err)
-			// Continue with other stores even if one fails
+	it, err := db.Iterator(cursor, nil)
+	if err != nil {
+		return err
+	}
+	defer it.Close()
+
+	if !it.Valid() {
+		_ = setCursor(db, nil)
+		return nil
+	}
+
+	start := append([]byte(nil), it.Key()...)
+	startTime := time.Now()
+
+	// 2) avance avec budget temps
+	for i := 0; i < step && it.Valid(); i++ {
+		if time.Since(startTime) > maxDuration {
+			break
+		}
+		it.Next()
+	}
+
+	var limit []byte
+	if it.Valid() {
+		limit = append([]byte(nil), it.Key()...)
+	} else {
+		limit = nil
+	}
+
+	if limit != nil && bytes.Equal(start, limit) {
+		it.Next()
+		if it.Valid() {
+			limit = append([]byte(nil), it.Key()...)
+		} else {
+			limit = nil
 		}
 	}
+
+	// si budget déjà explosé avant même d'avoir bougé : skip compaction
+	if limit != nil && bytes.Equal(start, limit) {
+		app.logger.Info("CompactStep skipped", "reason", "time budget exceeded")
+		return nil
+	}
+
+	// 3) compaction effective
+	if err := forceCompact(db, start, limit); err != nil {
+		return err
+	}
+
+	// 4) mise à jour curseur
+	if limit == nil {
+		return setCursor(db, nil)
+	}
+	return setCursor(db, limit)
+}
+
+func (app *BaseApp) compactApplication(height int64) {
+	startTime := time.Now()
+
+	if height%100 != 0 {
+		return
+	}
+	// Option A : FULL RANGE (peut être long)
+	_ = app.compactor.TryEnqueue(compactTask{
+		start: nil, limit: nil,
+		label: fmt.Sprintf("full@h=%d", height),
+	})
+
+	fmt.Printf("compactApplication: %dms\n", time.Since(startTime).Milliseconds())
 }
 
 // SetCircuitBreaker sets the circuit breaker for the BaseApp.
@@ -1268,6 +1394,18 @@ func (app *BaseApp) TxEncode(tx sdk.Tx) ([]byte, error) {
 // Close is called in start cmd to gracefully cleanup resources.
 func (app *BaseApp) Close() error {
 	var errs []error
+
+	if app.compactor != nil {
+		app.logger.Info("Closing compactor")
+		app.compactor.Stop()
+		app.logger.Info("Compactor closed")
+	}
+
+	if app.pruner != nil {
+		app.logger.Info("Closing pruner")
+		app.pruner.Stop()
+		app.logger.Info("Pruner closed")
+	}
 
 	// Close app.db (opened by cosmos-sdk/server/start.go call to openDB)
 	if app.db != nil {
