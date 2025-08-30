@@ -555,10 +555,10 @@ func DeleteLatestState(homeDir string, backendType string, cmd *cobra.Command) e
 		return fmt.Errorf("failed to delete latest state: %w", err)
 	}
 
-	err = stateStore.ReplaceLastFinalizeBlockResponse(newLatestHeight, lastFinalizeBlockResponse)
-	if err != nil {
-		return fmt.Errorf("failed to replace last finalize block response: %w", err)
-	}
+	// err = stateStore.ReplaceLastFinalizeBlockResponse(newLatestHeight, lastFinalizeBlockResponse)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to replace last finalize block response: %w", err)
+	// }
 
 	latestState.AppHash = lastFinalizeBlockResponse.AppHash
 	latestState.LastBlockHeight = newLatestHeight

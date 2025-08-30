@@ -15,7 +15,6 @@ import (
 	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cometbft/cometbft/crypto/tmhash"
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	cometbfttypes "github.com/cometbft/cometbft/types"
 	dbm "github.com/cosmos/cosmos-db"
 	"github.com/cosmos/gogoproto/proto"
 	"golang.org/x/exp/maps"
@@ -586,14 +585,14 @@ func (app *BaseApp) setState(mode execMode, h cmtproto.Header) {
 }
 
 func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
-	retainHeightNumber := cometbfttypes.GetRetainHeightWithoutFlags(retainHeight)
-	isArchive := cometbfttypes.IsRetainHeightArchive(retainHeight)
+	// retainHeightNumber := cometbfttypes.GetRetainHeightWithoutFlags(retainHeight)
+	// isArchive := cometbfttypes.IsRetainHeightArchive(retainHeight)
 	baseVersion := rootmulti.GetBaseVersion(app.db)
 
-	if isArchive {
-		app.logger.Debug("pruning application skipped: retain height is archive")
-		return
-	}
+	// if isArchive {
+	// 	app.logger.Debug("pruning application skipped: retain height is archive")
+	// 	return
+	// }
 
 	// Check if we should prune based on the pruning interval
 	pruningOpts := app.cms.GetPruning()
@@ -602,18 +601,18 @@ func (app *BaseApp) pruneApplication(retainHeight int64, currentHeight int64) {
 		return
 	}
 
-	if retainHeightNumber <= 0 {
+	if retainHeight <= 0 {
 		return
 	}
 
-	if baseVersion+100 < retainHeightNumber {
-		retainHeightNumber = baseVersion + 100
-		app.logger.Info("pruning application 100 blocks", "from", baseVersion, "to", retainHeightNumber)
+	if baseVersion+100 < retainHeight {
+		retainHeight = baseVersion + 100
+		app.logger.Info("pruning application 100 blocks", "from", baseVersion, "to", retainHeight)
 	}
 
 	// Enqueue pruning task asynchronously
 	_ = app.pruner.TryEnqueue(pruneTask{
-		retainHeight:  retainHeightNumber,
+		retainHeight:  retainHeight,
 		currentHeight: currentHeight,
 		label:         fmt.Sprintf("prune@h=%d", currentHeight),
 	})
