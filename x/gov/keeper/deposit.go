@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"cosmossdk.io/collections"
@@ -163,16 +162,6 @@ func (keeper Keeper) AddDeposit(ctx context.Context, proposalID uint64, deposito
 	if err != nil {
 		return false, err
 	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeProposalDeposit,
-			sdk.NewAttribute(types.AttributeKeyDepositor, depositorAddr.String()),
-			sdk.NewAttribute(sdk.AttributeKeyAmount, depositAmount.String()),
-			sdk.NewAttribute(types.AttributeKeyProposalID, fmt.Sprintf("%d", proposalID)),
-		),
-	)
 
 	err = keeper.SetDeposit(ctx, deposit)
 	if err != nil {

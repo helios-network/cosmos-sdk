@@ -64,13 +64,6 @@ func (k *Keeper) VerifyInvariant(goCtx context.Context, msg *types.MsgVerifyInva
 		panic(res)
 	}
 
-	ctx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeInvariant,
-			sdk.NewAttribute(types.AttributeKeyRoute, msg.InvariantRoute),
-		),
-	})
-
 	return &types.MsgVerifyInvariantResponse{}, nil
 }
 

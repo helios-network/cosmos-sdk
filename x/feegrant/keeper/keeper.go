@@ -107,14 +107,6 @@ func (k Keeper) GrantAllowance(ctx context.Context, granter, grantee sdk.AccAddr
 		return err
 	}
 
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			feegrant.EventTypeSetFeeGrant,
-			sdk.NewAttribute(feegrant.AttributeKeyGranter, grant.Granter),
-			sdk.NewAttribute(feegrant.AttributeKeyGrantee, grant.Grantee),
-		),
-	)
-
 	return nil
 }
 
@@ -143,14 +135,6 @@ func (k Keeper) UpdateAllowance(ctx context.Context, granter, grantee sdk.AccAdd
 		return err
 	}
 
-	sdk.UnwrapSDKContext(ctx).EventManager().EmitEvent(
-		sdk.NewEvent(
-			feegrant.EventTypeUpdateFeeGrant,
-			sdk.NewAttribute(feegrant.AttributeKeyGranter, grant.Granter),
-			sdk.NewAttribute(feegrant.AttributeKeyGrantee, grant.Grantee),
-		),
-	)
-
 	return nil
 }
 
@@ -178,14 +162,6 @@ func (k Keeper) revokeAllowance(ctx context.Context, granter, grantee sdk.AccAdd
 			return err
 		}
 	}
-
-	sdk.UnwrapSDKContext(ctx).EventManager().EmitEvent(
-		sdk.NewEvent(
-			feegrant.EventTypeRevokeFeeGrant,
-			sdk.NewAttribute(feegrant.AttributeKeyGranter, granter.String()),
-			sdk.NewAttribute(feegrant.AttributeKeyGrantee, grantee.String()),
-		),
-	)
 	return nil
 }
 
@@ -259,8 +235,6 @@ func (k Keeper) UseGrantedFees(ctx context.Context, granter, grantee sdk.AccAddr
 			return err
 		}
 
-		emitUseGrantEvent(ctx, granter.String(), grantee.String())
-
 		return nil
 	}
 
@@ -268,20 +242,8 @@ func (k Keeper) UseGrantedFees(ctx context.Context, granter, grantee sdk.AccAddr
 		return err
 	}
 
-	emitUseGrantEvent(ctx, granter.String(), grantee.String())
-
 	// if fee allowance is accepted, store the updated state of the allowance
 	return k.UpdateAllowance(ctx, granter, grantee, grant)
-}
-
-func emitUseGrantEvent(ctx context.Context, granter, grantee string) {
-	sdk.UnwrapSDKContext(ctx).EventManager().EmitEvent(
-		sdk.NewEvent(
-			feegrant.EventTypeUseFeeGrant,
-			sdk.NewAttribute(feegrant.AttributeKeyGranter, granter),
-			sdk.NewAttribute(feegrant.AttributeKeyGrantee, grantee),
-		),
-	)
 }
 
 // InitGenesis will initialize the keeper from a *previously validated* GenesisState

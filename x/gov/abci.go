@@ -82,14 +82,6 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			keeper.Logger(ctx).Error("failed to execute AfterProposalFailedMinDeposit hook", "error", err)
 		}
 
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
-				types.EventTypeInactiveProposal,
-				sdk.NewAttribute(types.AttributeKeyProposalID, fmt.Sprintf("%d", proposal.Id)),
-				sdk.NewAttribute(types.AttributeKeyProposalResult, types.AttributeValueProposalDropped),
-			),
-		)
-
 		logger.Info(
 			"proposal did not meet minimum deposit; deleted",
 			"proposal", proposal.Id,
@@ -129,8 +121,6 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			return false, err
 		}
 
-		var tagValue, logMsg string
-
 		passes, burnDeposits, tallyResults, err := keeper.Tally(ctx, proposal)
 		if err != nil {
 			return false, err
@@ -158,7 +148,6 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 		switch {
 		case passes:
 			var (
-				idx    int
 				events sdk.Events
 				msg    sdk.Msg
 			)
@@ -173,14 +162,12 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			if err != nil {
 				proposal.Status = v1.StatusFailed
 				proposal.FailedReason = err.Error()
-				tagValue = types.AttributeValueProposalFailed
-				logMsg = fmt.Sprintf("passed proposal (%v) failed to execute; msgs: %s", proposal, err)
 
 				break
 			}
 
 			// execute all messages
-			for idx, msg = range messages {
+			for _, msg = range messages {
 				handler := keeper.Router().Handler(msg)
 				var res *sdk.Result
 				res, err = safeExecuteHandler(cacheCtx, msg, handler)
@@ -195,19 +182,12 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			// Or else, `idx` and `err` are populated with the msg index and error.
 			if err == nil {
 				proposal.Status = v1.StatusPassed
-				tagValue = types.AttributeValueProposalPassed
-				logMsg = "passed"
 
 				// write state to the underlying multi-store
 				writeCache()
-
-				// propagate the msg events to the current context
-				ctx.EventManager().EmitEvents(events)
 			} else {
 				proposal.Status = v1.StatusFailed
 				proposal.FailedReason = err.Error()
-				tagValue = types.AttributeValueProposalFailed
-				logMsg = fmt.Sprintf("passed, but msg %d (%s) failed on execution: %s", idx, sdk.MsgTypeURL(msg), err)
 			}
 		case proposal.Expedited:
 			// When expedited proposal fails, it is converted
@@ -226,14 +206,9 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			if err != nil {
 				return false, err
 			}
-
-			tagValue = types.AttributeValueExpeditedProposalRejected
-			logMsg = "expedited proposal converted to regular"
 		default:
 			proposal.Status = v1.StatusRejected
 			proposal.FailedReason = "proposal did not get enough votes to pass"
-			tagValue = types.AttributeValueProposalRejected
-			logMsg = "rejected"
 		}
 
 		proposal.FinalTallyResult = &tallyResults
@@ -251,15 +226,6 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 		} else {
 			keeper.Logger(ctx).Error("failed to execute AfterProposalVotingPeriodEnded hook", "error", err)
 		}
-
-		ctx.EventManager().EmitEvent(
-			sdk.NewEvent(
-				types.EventTypeActiveProposal,
-				sdk.NewAttribute(types.AttributeKeyProposalID, fmt.Sprintf("%d", proposal.Id)),
-				sdk.NewAttribute(types.AttributeKeyProposalResult, tagValue),
-				sdk.NewAttribute(types.AttributeKeyProposalLog, logMsg),
-			),
-		)
 
 		return false, nil
 	})
@@ -301,19 +267,6 @@ func failUnsupportedProposal(
 	if err := keeper.RefundAndDeleteDeposits(ctx, proposal.Id); err != nil {
 		return err
 	}
-
-	eventType := types.EventTypeInactiveProposal
-	if active {
-		eventType = types.EventTypeActiveProposal
-	}
-
-	ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			eventType,
-			sdk.NewAttribute(types.AttributeKeyProposalID, fmt.Sprintf("%d", proposal.Id)),
-			sdk.NewAttribute(types.AttributeKeyProposalResult, types.AttributeValueProposalFailed),
-		),
-	)
 
 	logger.Info(
 		"proposal failed to decode; deleted",

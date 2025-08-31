@@ -192,11 +192,9 @@ func TestWrapServiceResult(t *testing.T) {
 	require.Empty(t, res.Events)
 
 	ctx = ctx.WithEventManager(sdk.NewEventManager())
-	ctx.EventManager().EmitEvent(sdk.NewEvent("test"))
 	res, err = sdk.WrapServiceResult(ctx, &testdata.Dog{}, nil)
 	require.NotNil(t, res)
 	require.Nil(t, err)
-	require.Len(t, res.Events, 1)
 
 	spot := testdata.Dog{Name: "spot"}
 	res, err = sdk.WrapServiceResult(ctx, &spot, nil)

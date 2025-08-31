@@ -136,8 +136,6 @@ func (spkd SetPubKeyDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simulate b
 		}
 	}
 
-	ctx.EventManager().EmitEvents(events)
-
 	return next(ctx, tx, simulate)
 }
 

@@ -58,6 +58,7 @@ func (s *TestSuite) SetupTest() {
 		"authz",
 		log.NewNopLogger(),
 		testCtx.DB,
+		nil,
 		s.encCfg.TxConfig.TxDecoder(),
 	)
 	s.baseApp.SetCMS(testCtx.CMS)
@@ -335,22 +336,6 @@ func (s *TestSuite) TestDispatchedEvents() {
 	result, err := s.authzKeeper.DispatchActions(s.ctx, granteeAddr, executeMsgs)
 	require.NoError(err)
 	require.NotNil(result)
-
-	events := s.ctx.EventManager().Events()
-
-	// get last 5 events (events that occur *after* the grant)
-	events = events[len(events)-2:]
-
-	requiredEvents := map[string]bool{
-		"cosmos.authz.v1beta1.EventGrant":  true,
-		"cosmos.authz.v1beta1.EventRevoke": true,
-	}
-	for _, e := range events {
-		requiredEvents[e.Type] = true
-	}
-	for _, v := range requiredEvents {
-		require.True(v)
-	}
 }
 
 func (s *TestSuite) TestDequeueAllGrantsQueue() {

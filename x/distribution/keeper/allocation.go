@@ -155,16 +155,6 @@ func (k Keeper) AllocateTokensToValidator(ctx context.Context, val stakingtypes.
 	if err != nil {
 		return err
 	}
-
-	// update current commission
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeCommission,
-			sdk.NewAttribute(sdk.AttributeKeyAmount, commission.String()),
-			sdk.NewAttribute(types.AttributeKeyValidator, val.GetOperator()),
-		),
-	)
 	currentCommission, err := k.GetValidatorAccumulatedCommission(ctx, valBz)
 	if err != nil {
 		return err
@@ -187,15 +177,6 @@ func (k Keeper) AllocateTokensToValidator(ctx context.Context, val stakingtypes.
 	if err != nil {
 		return err
 	}
-
-	// update outstanding rewards
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeRewards,
-			sdk.NewAttribute(sdk.AttributeKeyAmount, tokens.String()),
-			sdk.NewAttribute(types.AttributeKeyValidator, val.GetOperator()),
-		),
-	)
 
 	outstanding, err := k.GetValidatorOutstandingRewards(ctx, valBz)
 	if err != nil {

@@ -4,13 +4,11 @@ import (
 	"bytes"
 	context "context"
 	fmt "fmt"
-	"strings"
 
 	"cosmossdk.io/collections"
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/x/circuit/types"
 
-	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 )
 
@@ -63,16 +61,6 @@ func (srv msgServer) AuthorizeCircuitBreaker(ctx context.Context, msg *types.Msg
 		return nil, err
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			"authorize_circuit_breaker",
-			sdk.NewAttribute("granter", msg.Granter),
-			sdk.NewAttribute("grantee", msg.Grantee),
-			sdk.NewAttribute("permission", msg.Permissions.String()),
-		),
-	})
-
 	return &types.MsgAuthorizeCircuitBreakerResponse{
 		Success: true,
 	}, nil
@@ -118,17 +106,6 @@ func (srv msgServer) TripCircuitBreaker(ctx context.Context, msg *types.MsgTripC
 		}
 
 	}
-
-	urls := strings.Join(msg.GetMsgTypeUrls(), ",")
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			"trip_circuit_breaker",
-			sdk.NewAttribute("authority", msg.Authority),
-			sdk.NewAttribute("msg_url", urls),
-		),
-	})
 
 	return &types.MsgTripCircuitBreakerResponse{
 		Success: true,
@@ -177,17 +154,6 @@ func (srv msgServer) ResetCircuitBreaker(ctx context.Context, msg *types.MsgRese
 			return nil, err
 		}
 	}
-
-	urls := strings.Join(msg.GetMsgTypeUrls(), ",")
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			"reset_circuit_breaker",
-			sdk.NewAttribute("authority", msg.Authority),
-			sdk.NewAttribute("msg_url", urls),
-		),
-	})
 
 	return &types.MsgResetCircuitBreakerResponse{Success: true}, nil
 }

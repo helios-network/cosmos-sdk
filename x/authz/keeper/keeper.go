@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
-	abci "github.com/cometbft/cometbft/abci/types"
 	"github.com/cosmos/gogoproto/proto"
 
 	corestoretypes "cosmossdk.io/core/store"
@@ -169,18 +167,6 @@ func (k Keeper) DispatchActions(ctx context.Context, grantee sdk.AccAddress, msg
 		}
 
 		results[i] = msgResp.Data
-
-		// emit the events from the dispatched actions
-		events := msgResp.Events
-		sdkEvents := make([]sdk.Event, 0, len(events))
-		for _, event := range events {
-			e := event
-			e.Attributes = append(e.Attributes, abci.EventAttribute{Key: "authz_msg_index", Value: strconv.Itoa(i)})
-
-			sdkEvents = append(sdkEvents, sdk.Event(e))
-		}
-
-		sdkCtx.EventManager().EmitEvents(sdkEvents)
 	}
 
 	return results, nil
@@ -228,11 +214,7 @@ func (k Keeper) SaveGrant(ctx context.Context, grantee, granter sdk.AccAddress, 
 		return err
 	}
 
-	return sdkCtx.EventManager().EmitTypedEvent(&authz.EventGrant{
-		MsgTypeUrl: authorization.MsgTypeURL(),
-		Granter:    granter.String(),
-		Grantee:    grantee.String(),
-	})
+	return nil
 }
 
 // DeleteGrant revokes any authorization for the provided message type granted to the grantee
@@ -257,12 +239,7 @@ func (k Keeper) DeleteGrant(ctx context.Context, grantee, granter sdk.AccAddress
 		return err
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	return sdkCtx.EventManager().EmitTypedEvent(&authz.EventRevoke{
-		MsgTypeUrl: msgType,
-		Granter:    granter.String(),
-		Grantee:    grantee.String(),
-	})
+	return nil
 }
 
 // GetAuthorizations Returns list of `Authorizations` granted to the grantee by the granter.

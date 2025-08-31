@@ -98,13 +98,5 @@ func (k msgServer) PruneAllowances(ctx context.Context, req *feegrant.MsgPruneAl
 		return nil, err
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			feegrant.EventTypePruneFeeGrant,
-			sdk.NewAttribute(feegrant.AttributeKeyPruner, req.Pruner),
-		),
-	)
-
 	return &feegrant.MsgPruneAllowancesResponse{}, nil
 }

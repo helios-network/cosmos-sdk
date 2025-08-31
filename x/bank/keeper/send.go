@@ -176,14 +176,6 @@ func (k BaseSendKeeper) InputOutputCoins(ctx context.Context, input types.Input,
 		}
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			sdk.EventTypeMessage,
-			sdk.NewAttribute(types.AttributeKeySender, input.Address),
-		),
-	)
-
 	return nil
 }
 
@@ -205,14 +197,6 @@ func (k BaseSendKeeper) SendCoins(ctx context.Context, fromAddr, toAddr sdk.AccA
 			return err
 		}
 	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	// bech32 encoding is expensive! Only do it once for fromAddr
-	fromAddrString := fromAddr.String()
-	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
-		sdk.EventTypeMessage,
-		sdk.NewAttribute(types.AttributeKeySender, fromAddrString),
-	))
 
 	return nil
 }
@@ -238,16 +222,6 @@ func (k BaseSendKeeper) sendCoin(ctx context.Context, fromAddr, toAddr sdk.AccAd
 		defer telemetry.IncrCounter(1, "new", "account")
 		k.ak.SetAccount(ctx, k.ak.NewAccountWithAddress(ctx, toAddr))
 	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeTransfer,
-			sdk.NewAttribute(types.AttributeKeyRecipient, toAddr.String()),
-			sdk.NewAttribute(types.AttributeKeySender, fromAddr.String()),
-			sdk.NewAttribute(sdk.AttributeKeyAmount, amt.String()),
-		),
-	)
 	return nil
 }
 
@@ -307,11 +281,6 @@ func (k BaseSendKeeper) subUnlockedCoins(ctx context.Context, addr sdk.AccAddres
 		k.updateHoldersCount(ctx, balance, newBalance)
 		k.updateTokenCount(ctx, balance, newBalance, addr)
 	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		types.NewCoinSpentEvent(addr, amt),
-	)
 
 	return nil
 }
@@ -426,12 +395,6 @@ func (k BaseSendKeeper) addCoins(ctx context.Context, addr sdk.AccAddress, amt s
 		k.updateHoldersCount(ctx, balance, newBalance)
 		k.updateTokenCount(ctx, balance, newBalance, addr)
 	}
-
-	// emit coin received event
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		types.NewCoinReceivedEvent(addr, amt),
-	)
 
 	return nil
 }

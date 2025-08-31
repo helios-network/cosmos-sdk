@@ -25,12 +25,7 @@ func (k BaseSendKeeper) setTransientBalance(ctx sdk.Context, addr sdk.AccAddress
 }
 
 func (k BaseKeeper) EmitAllTransientBalances(ctx sdk.Context) {
-	balanceUpdates := k.GetAllTransientAccountBalanceUpdates(ctx)
-	if len(balanceUpdates) > 0 {
-		ctx.EventManager().EmitTypedEvent(&types.EventSetBalances{
-			BalanceUpdates: balanceUpdates,
-		})
-	}
+
 }
 
 // GetAllTransientAccountBalanceUpdates returns all the transient accounts balances from the transient store.

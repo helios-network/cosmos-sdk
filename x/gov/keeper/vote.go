@@ -2,7 +2,6 @@ package keeper
 
 import (
 	"context"
-	"fmt"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/errors"
@@ -46,16 +45,6 @@ func (keeper Keeper) AddVote(ctx context.Context, proposalID uint64, voterAddr s
 	if err != nil {
 		return err
 	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeProposalVote,
-			sdk.NewAttribute(types.AttributeKeyVoter, voterAddr.String()),
-			sdk.NewAttribute(types.AttributeKeyOption, options.String()),
-			sdk.NewAttribute(types.AttributeKeyProposalID, fmt.Sprintf("%d", proposalID)),
-		),
-	)
 
 	return nil
 }

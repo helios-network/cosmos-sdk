@@ -565,9 +565,6 @@ func (s *TestSuite) TestUpdateGroupMembers() {
 				s.Assert().Equal(spec.expMembers[i].Member.AddedAt, loadedMembers[i].Member.AddedAt)
 				s.Assert().Equal(spec.expMembers[i].GroupId, loadedMembers[i].GroupId)
 			}
-
-			events := sdkCtx.EventManager().ABCIEvents()
-			s.Require().Len(events, 1) // EventUpdateGroup
 		})
 	}
 }
@@ -760,9 +757,6 @@ func (s *TestSuite) TestUpdateGroupMetadata() {
 			res, err := s.groupKeeper.GroupInfo(sdkCtx, &group.QueryGroupInfoRequest{GroupId: groupID})
 			s.Require().NoError(err)
 			s.Assert().Equal(spec.expStored, res.Info)
-
-			events := sdkCtx.EventManager().ABCIEvents()
-			s.Require().Len(events, 1) // EventUpdateGroup
 		})
 	}
 }
@@ -1513,22 +1507,6 @@ func (s *TestSuite) TestUpdateGroupPolicyMetadata() {
 			})
 			s.Require().NoError(err)
 			s.Assert().Equal(spec.expGroupPolicy, res.Info)
-
-			// check events
-			var hasUpdateGroupPolicyEvent bool
-			events := s.ctx.(sdk.Context).EventManager().ABCIEvents()
-			for _, event := range events {
-				event, err := sdk.ParseTypedEvent(event)
-				s.Require().NoError(err)
-
-				if e, ok := event.(*group.EventUpdateGroupPolicy); ok {
-					s.Require().Equal(e.Address, groupPolicyAddr)
-					hasUpdateGroupPolicyEvent = true
-					break
-				}
-			}
-
-			s.Require().True(hasUpdateGroupPolicyEvent)
 		})
 	}
 }
@@ -1878,8 +1856,6 @@ func (s *TestSuite) TestSubmitProposal() {
 				s.Require().Contains(fromBalances, sdk.NewInt64Coin("test", 9900))
 				toBalances := s.bankKeeper.GetAllBalances(sdkCtx, addr2)
 				s.Require().Contains(toBalances, sdk.NewInt64Coin("test", 100))
-				events := sdkCtx.EventManager().ABCIEvents()
-				s.Require().True(eventTypeFound(events, EventProposalPruned))
 			},
 		},
 		"with try exec, not enough yes votes for proposal to pass": {
@@ -2026,9 +2002,6 @@ func (s *TestSuite) TestWithdrawProposal() {
 				timeDiff := vpe.Sub(s.sdkCtx.BlockTime())
 				ctxVPE := sdkCtx.WithBlockTime(s.sdkCtx.BlockTime().Add(timeDiff).Add(time.Second * 1))
 				s.Require().NoError(s.groupKeeper.TallyProposalsAtVPEnd(ctxVPE))
-				events := ctxVPE.EventManager().ABCIEvents()
-
-				s.Require().True(eventTypeFound(events, EventProposalPruned))
 			},
 		},
 	}
@@ -2612,8 +2585,6 @@ func (s *TestSuite) TestExecProposal() {
 			expFromBalances:   sdk.NewInt64Coin("test", 9900),
 			expToBalances:     sdk.NewInt64Coin("test", 100),
 			postRun: func(sdkCtx sdk.Context) {
-				events := sdkCtx.EventManager().ABCIEvents()
-				s.Require().True(eventTypeFound(events, EventProposalPruned))
 			},
 		},
 		"proposal with multiple messages executed when accepted": {
@@ -2630,8 +2601,6 @@ func (s *TestSuite) TestExecProposal() {
 			expFromBalances:   sdk.NewInt64Coin("test", 9800),
 			expToBalances:     sdk.NewInt64Coin("test", 200),
 			postRun: func(sdkCtx sdk.Context) {
-				events := sdkCtx.EventManager().ABCIEvents()
-				s.Require().True(eventTypeFound(events, EventProposalPruned))
 			},
 		},
 		"proposal not executed when rejected": {
@@ -2643,8 +2612,6 @@ func (s *TestSuite) TestExecProposal() {
 			expProposalStatus: group.PROPOSAL_STATUS_REJECTED,
 			expExecutorResult: group.PROPOSAL_EXECUTOR_RESULT_NOT_RUN,
 			postRun: func(sdkCtx sdk.Context) {
-				events := sdkCtx.EventManager().ABCIEvents()
-				s.Require().False(eventTypeFound(events, EventProposalPruned))
 			},
 		},
 		"open proposal must not fail": {
@@ -2654,8 +2621,6 @@ func (s *TestSuite) TestExecProposal() {
 			expProposalStatus: group.PROPOSAL_STATUS_SUBMITTED,
 			expExecutorResult: group.PROPOSAL_EXECUTOR_RESULT_NOT_RUN,
 			postRun: func(sdkCtx sdk.Context) {
-				events := sdkCtx.EventManager().ABCIEvents()
-				s.Require().False(eventTypeFound(events, EventProposalPruned))
 			},
 		},
 		"invalid proposal id": {
@@ -2712,8 +2677,6 @@ func (s *TestSuite) TestExecProposal() {
 			expProposalStatus: group.PROPOSAL_STATUS_ACCEPTED,
 			expExecutorResult: group.PROPOSAL_EXECUTOR_RESULT_SUCCESS,
 			postRun: func(sdkCtx sdk.Context) {
-				events := sdkCtx.EventManager().ABCIEvents()
-				s.Require().True(eventTypeFound(events, EventProposalPruned))
 			},
 		},
 		"prevent double execution when successful": {
@@ -3002,8 +2965,6 @@ func (s *TestSuite) TestExecPrunedProposalsAndVotes() {
 				res, err := s.groupKeeper.VotesByProposal(sdkCtx, &group.QueryVotesByProposalRequest{ProposalId: proposalID})
 				s.Require().NoError(err)
 				s.Require().Empty(res.GetVotes())
-				events := sdkCtx.EventManager().ABCIEvents()
-				s.Require().True(eventTypeFound(events, EventProposalPruned))
 
 			} else {
 				// Check that proposal and votes exists

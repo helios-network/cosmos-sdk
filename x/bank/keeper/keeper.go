@@ -159,11 +159,6 @@ func (k BaseKeeper) DelegateCoins(ctx context.Context, delegatorAddr, moduleAccA
 	if err := k.trackDelegation(ctx, delegatorAddr, balances, amt); err != nil {
 		return errorsmod.Wrap(err, "failed to track delegation")
 	}
-	// emit coin spent event
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		types.NewCoinSpentEvent(delegatorAddr, amt),
-	)
 
 	err := k.addCoins(ctx, moduleAccAddr, amt)
 	if err != nil {
@@ -204,11 +199,6 @@ func (k BaseKeeper) DelegateErc20(ctx context.Context, delegatorAddr, moduleAccA
 	if err := k.trackDelegation(ctx, delegatorAddr, balances, sdk.NewCoins(sdk.NewCoin(erc20Coin.Denom, erc20Coin.Amount))); err != nil {
 		return errorsmod.Wrap(err, "failed to track delegation")
 	}
-	// emit coin spent event
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		types.NewCoinSpentEvent(delegatorAddr, sdk.NewCoins(sdk.NewCoin(erc20Coin.Denom, erc20Coin.Amount))),
-	)
 
 	err = k.addCoins(ctx, moduleAccAddr, amt)
 	if err != nil {
@@ -488,7 +478,6 @@ func (k BaseKeeper) UndelegateErc20FromModuleToAccount(
 // MintCoins creates new coins from thin air and adds it to the module account.
 // It will panic if the module account does not exist or is unauthorized.
 func (k BaseKeeper) MintCoins(ctx context.Context, moduleName string, amounts sdk.Coins) error {
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
 
 	err := k.mintCoinsRestrictionFn(ctx, amounts)
 	if err != nil {
@@ -517,11 +506,6 @@ func (k BaseKeeper) MintCoins(ctx context.Context, moduleName string, amounts sd
 
 	k.logger.Debug("minted coins from module account", "amount", amounts.String(), "from", moduleName)
 
-	// emit mint event
-	sdkCtx.EventManager().EmitEvent(
-		types.NewCoinMintEvent(acc.GetAddress(), amounts),
-	)
-
 	return nil
 }
 
@@ -549,12 +533,6 @@ func (k BaseKeeper) BurnCoins(ctx context.Context, moduleName string, amounts sd
 	}
 
 	k.logger.Debug("burned tokens from module account", "amount", amounts.String(), "from", moduleName)
-
-	// emit burn event
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		types.NewCoinBurnEvent(acc.GetAddress(), amounts),
-	)
 
 	return nil
 }

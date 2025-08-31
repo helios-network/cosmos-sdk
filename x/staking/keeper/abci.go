@@ -243,17 +243,6 @@ func (k *Keeper) EndBlocker(ctx context.Context) ([]abci.ValidatorUpdate, error)
 		"total_validators", len(finalUpdatedValidatorSet),
 	)
 
-	// Step 9: Emit epoch change event
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			"epoch_change",
-			sdk.NewAttribute("epoch_number", fmt.Sprintf("%d", currentEpoch+1)),
-			sdk.NewAttribute("height", fmt.Sprintf("%d", currentHeight)),
-			sdk.NewAttribute("validators_replaced", fmt.Sprintf("%d", numToReplace)),
-			sdk.NewAttribute("total_validators", fmt.Sprintf("%d", len(finalUpdatedValidatorSet))),
-		),
-	)
-
 	//making sure the network stays alive
 	updates, err = k.ensureNonEmptyValidatorSet(ctx, updates, currentHeight, currentEpoch)
 	if err != nil {
@@ -366,17 +355,6 @@ func (k Keeper) ensureNonEmptyValidatorSet(
 	k.SetActiveValidatorsForCurrentEpoch(ctx, nonJailedBonded)
 	k.SetCurrentEpoch(ctx, currentEpoch+1)
 	k.SetLastEpochHeight(ctx, currentHeight)
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			"epoch_fallback",
-			sdk.NewAttribute("epoch_number", fmt.Sprintf("%d", currentEpoch+1)),
-			sdk.NewAttribute("height", fmt.Sprintf("%d", currentHeight)),
-			sdk.NewAttribute("reason", "empty_validator_set_prevented"),
-			sdk.NewAttribute("restored_validators", fmt.Sprintf("%d", len(nonJailedBonded))),
-		),
-	)
 
 	k.Logger(ctx).Info("Fallback applied: restored validator set from bonded validators",
 		"validator_count", len(nonJailedBonded),

@@ -3,7 +3,6 @@ package keeper
 import (
 	"bytes"
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/hashicorp/go-metrics"
@@ -174,14 +173,6 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 		}
 	}
 
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeCreateValidator,
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
-			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Value.String()),
-		),
-	})
-
 	return &types.MsgCreateValidatorResponse{}, nil
 }
 
@@ -276,15 +267,6 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 		return nil, err
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeEditValidator,
-			sdk.NewAttribute(types.AttributeKeyCommissionRate, validator.Commission.String()),
-			sdk.NewAttribute(types.AttributeKeyMinSelfDelegation, validator.MinSelfDelegation.String()),
-		),
-	})
-
 	return &types.MsgEditValidatorResponse{}, nil
 }
 
@@ -322,15 +304,14 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 		return nil, sdkerrors.ErrUnauthorized.Wrap("delegation not authorized: delegator is not the validator and delegate authorization is false")
 	}
 
-	var newShares = math.LegacyZeroDec()
 	if msg.Amount.Denom == bondDenom {
-		newShares, err = k.Keeper.DelegateBoost(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, validator)
+		_, err = k.Keeper.DelegateBoost(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, validator)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		//NOTE: source funds are always unbonded
-		newShares, err = k.Keeper.Delegate(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, types.Unbonded, validator, true)
+		_, err = k.Keeper.Delegate(ctx, delegatorAddress, msg.Amount.Amount, msg.Amount.Denom, types.Unbonded, validator, true)
 		if err != nil {
 			return nil, err
 		}
@@ -346,17 +327,6 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 			)
 		}()
 	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeDelegate,
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
-			sdk.NewAttribute(types.AttributeKeyDelegator, msg.DelegatorAddress),
-			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Amount.String()),
-			sdk.NewAttribute(types.AttributeKeyNewShares, newShares.String()),
-		),
-	})
 
 	return &types.MsgDelegateResponse{}, nil
 }
@@ -420,17 +390,6 @@ func (k msgServer) BeginRedelegate(ctx context.Context, msg *types.MsgBeginRedel
 			)
 		}()
 	}
-
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeRedelegate,
-			sdk.NewAttribute(types.AttributeKeySrcValidator, msg.ValidatorSrcAddress),
-			sdk.NewAttribute(types.AttributeKeyDstValidator, msg.ValidatorDstAddress),
-			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Amount.String()),
-			sdk.NewAttribute(types.AttributeKeyCompletionTime, completionTime.Format(time.RFC3339)),
-		),
-	})
 
 	return &types.MsgBeginRedelegateResponse{
 		CompletionTime: completionTime,
@@ -508,16 +467,6 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 			)
 		}()
 	}
-
-	sdkCtx.EventManager().EmitEvents(sdk.Events{
-		sdk.NewEvent(
-			types.EventTypeUnbond,
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
-			sdk.NewAttribute(types.AttributeKeyDelegator, msg.DelegatorAddress),
-			sdk.NewAttribute(sdk.AttributeKeyAmount, undelegatedCoin.String()),
-			sdk.NewAttribute(types.AttributeKeyCompletionTime, completionTime.Format(time.RFC3339)),
-		),
-	})
 
 	return &types.MsgUndelegateResponse{
 		CompletionTime: completionTime,
@@ -639,16 +588,6 @@ func (k msgServer) CancelUnbondingDelegation(ctx context.Context, msg *types.Msg
 	if err != nil {
 		return nil, err
 	}
-
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeCancelUnbondingDelegation,
-			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Amount.String()),
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
-			sdk.NewAttribute(types.AttributeKeyDelegator, msg.DelegatorAddress),
-			sdk.NewAttribute(types.AttributeKeyCreationHeight, strconv.FormatInt(msg.CreationHeight, 10)),
-		),
-	)
 
 	return &types.MsgCancelUnbondingDelegationResponse{}, nil
 }

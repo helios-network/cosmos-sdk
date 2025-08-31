@@ -164,13 +164,6 @@ func SubmitEvidence(ctx Context, evidence Evidence) error {
     return errorsmod.Wrap(types.ErrInvalidEvidence, err.Error())
   }
 
-  ctx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeSubmitEvidence,
-			sdk.NewAttribute(types.AttributeKeyEvidenceHash, strings.ToUpper(hex.EncodeToString(evidence.Hash()))),
-		),
-	)
-
   SetEvidence(ctx, evidence)
   return nil
 }

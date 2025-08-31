@@ -42,12 +42,5 @@ func (k Keeper) Send(goCtx context.Context, msg *nft.MsgSend) (*nft.MsgSendRespo
 	if err := k.Transfer(ctx, msg.ClassId, msg.Id, receiver); err != nil {
 		return nil, err
 	}
-
-	ctx.EventManager().EmitTypedEvent(&nft.EventSend{
-		ClassId:  msg.ClassId,
-		Id:       msg.Id,
-		Sender:   msg.Sender,
-		Receiver: msg.Receiver,
-	})
 	return &nft.MsgSendResponse{}, nil
 }

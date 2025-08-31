@@ -91,10 +91,6 @@ func (k Keeper) CreateGroup(goCtx context.Context, msg *group.MsgCreateGroup) (*
 		}
 	}
 
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventCreateGroup{GroupId: groupID}); err != nil {
-		return nil, err
-	}
-
 	return &group.MsgCreateGroupResponse{GroupId: groupID}, nil
 }
 
@@ -417,10 +413,6 @@ func (k Keeper) CreateGroupPolicy(goCtx context.Context, msg *group.MsgCreateGro
 		return nil, errorsmod.Wrap(err, "could not create group policy")
 	}
 
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventCreateGroupPolicy{Address: accountAddr.String()}); err != nil {
-		return nil, err
-	}
-
 	return &group.MsgCreateGroupPolicyResponse{Address: accountAddr.String()}, nil
 }
 
@@ -617,10 +609,6 @@ func (k Keeper) SubmitProposal(goCtx context.Context, msg *group.MsgSubmitPropos
 		return nil, errorsmod.Wrap(err, "create proposal")
 	}
 
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventSubmitProposal{ProposalId: id}); err != nil {
-		return nil, err
-	}
-
 	// Try to execute proposal immediately
 	if msg.Exec == group.Exec_EXEC_TRY {
 		// Consider proposers as Yes votes
@@ -683,10 +671,6 @@ func (k Keeper) WithdrawProposal(goCtx context.Context, msg *group.MsgWithdrawPr
 
 	proposal.Status = group.PROPOSAL_STATUS_WITHDRAWN
 	if err := k.proposalTable.Update(ctx.KVStore(k.key), msg.ProposalId, &proposal); err != nil {
-		return nil, err
-	}
-
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventWithdrawProposal{ProposalId: msg.ProposalId}); err != nil {
 		return nil, err
 	}
 
@@ -758,11 +742,6 @@ func (k Keeper) Vote(goCtx context.Context, msg *group.MsgVote) (*group.MsgVoteR
 	if err := k.voteTable.Create(ctx.KVStore(k.key), &newVote); err != nil {
 		return nil, errorsmod.Wrap(err, "store vote")
 	}
-
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventVote{ProposalId: msg.ProposalId}); err != nil {
-		return nil, err
-	}
-
 	// Try to execute proposal immediately
 	if msg.Exec == group.Exec_EXEC_TRY {
 		_, err = k.Exec(ctx, &group.MsgExec{ProposalId: msg.ProposalId, Executor: msg.Voter})
@@ -847,7 +826,6 @@ func (k Keeper) Exec(goCtx context.Context, msg *group.MsgExec) (*group.MsgExecR
 	}
 
 	// Execute proposal payload.
-	var logs string
 	if proposal.Status == group.PROPOSAL_STATUS_ACCEPTED && proposal.ExecutorResult != group.PROPOSAL_EXECUTOR_RESULT_SUCCESS {
 		// Caching context so that we don't update the store in case of failure.
 		cacheCtx, flush := ctx.CacheContext()
@@ -858,18 +836,12 @@ func (k Keeper) Exec(goCtx context.Context, msg *group.MsgExec) (*group.MsgExecR
 		}
 
 		decisionPolicy := policyInfo.DecisionPolicy.GetCachedValue().(group.DecisionPolicy)
-		if results, err := k.doExecuteMsgs(cacheCtx, k.router, proposal, addr, decisionPolicy); err != nil {
+		if _, err := k.doExecuteMsgs(cacheCtx, k.router, proposal, addr, decisionPolicy); err != nil {
 			proposal.ExecutorResult = group.PROPOSAL_EXECUTOR_RESULT_FAILURE
-			logs = fmt.Sprintf("proposal execution failed on proposal %d, because of error %s", proposal.Id, err.Error())
 			k.Logger(ctx).Info("proposal execution failed", "cause", err, "proposalID", proposal.Id)
 		} else {
 			proposal.ExecutorResult = group.PROPOSAL_EXECUTOR_RESULT_SUCCESS
 			flush()
-
-			for _, res := range results {
-				// NOTE: The sdk msg handler creates a new EventManager, so events must be correctly propagated back to the current context
-				ctx.EventManager().EmitEvents(res.GetEvents())
-			}
 		}
 	}
 
@@ -879,29 +851,11 @@ func (k Keeper) Exec(goCtx context.Context, msg *group.MsgExec) (*group.MsgExecR
 		if err := k.pruneProposal(ctx, proposal.Id); err != nil {
 			return nil, err
 		}
-
-		// Emit event for proposal finalized with its result
-		if err := ctx.EventManager().EmitTypedEvent(
-			&group.EventProposalPruned{
-				ProposalId:  proposal.Id,
-				Status:      proposal.Status,
-				TallyResult: &proposal.FinalTallyResult,
-			}); err != nil {
-			return nil, err
-		}
 	} else {
 		store := ctx.KVStore(k.key)
 		if err := k.proposalTable.Update(store, proposal.Id, &proposal); err != nil {
 			return nil, err
 		}
-	}
-
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventExec{
-		ProposalId: proposal.Id,
-		Logs:       logs,
-		Result:     proposal.ExecutorResult,
-	}); err != nil {
-		return nil, err
 	}
 
 	return &group.MsgExecResponse{
@@ -966,13 +920,6 @@ func (k Keeper) LeaveGroup(goCtx context.Context, msg *group.MsgLeaveGroup) (*gr
 		return nil, err
 	}
 
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventLeaveGroup{
-		GroupId: msg.GroupId,
-		Address: msg.Address,
-	}); err != nil {
-		return nil, err
-	}
-
 	return &group.MsgLeaveGroupResponse{}, nil
 }
 
@@ -1027,10 +974,6 @@ func (k Keeper) doUpdateGroupPolicy(ctx sdk.Context, reqGroupPolicy, reqAdmin st
 		return err
 	}
 
-	if err = ctx.EventManager().EmitTypedEvent(&group.EventUpdateGroupPolicy{Address: groupPolicyInfo.Address}); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -1048,10 +991,6 @@ func (k Keeper) doUpdateGroup(ctx sdk.Context, groupID uint64, reqGroupAdmin str
 
 	if err := action(&groupInfo); err != nil {
 		return errorsmod.Wrap(err, errNote)
-	}
-
-	if err := ctx.EventManager().EmitTypedEvent(&group.EventUpdateGroup{GroupId: groupID}); err != nil {
-		return err
 	}
 
 	return nil

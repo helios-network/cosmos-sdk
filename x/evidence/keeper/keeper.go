@@ -110,13 +110,5 @@ func (k Keeper) SubmitEvidence(ctx context.Context, evidence exported.Evidence) 
 		return errors.Wrap(types.ErrInvalidEvidence, err.Error())
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeSubmitEvidence,
-			sdk.NewAttribute(types.AttributeKeyEvidenceHash, strings.ToUpper(hex.EncodeToString(evidence.Hash()))),
-		),
-	)
-
 	return k.Evidences.Set(ctx, evidence.Hash(), evidence)
 }

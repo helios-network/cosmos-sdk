@@ -352,15 +352,5 @@ func (k Keeper) withdrawDelegationRewards(ctx context.Context, val stakingtypes.
 		finalRewards = sdk.Coins{sdk.NewCoin(baseDenom, math.ZeroInt())}
 	}
 
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeWithdrawRewards,
-			sdk.NewAttribute(sdk.AttributeKeyAmount, finalRewards.String()),
-			sdk.NewAttribute(types.AttributeKeyValidator, val.GetOperator()),
-			sdk.NewAttribute(types.AttributeKeyDelegator, del.GetDelegatorAddr()),
-		),
-	)
-
 	return finalRewards, nil
 }

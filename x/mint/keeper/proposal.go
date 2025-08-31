@@ -93,18 +93,6 @@ func (k Keeper) HandleUpdateInflationProposal(ctx context.Context, p *types.Upda
 		return fmt.Errorf("failed to update inflation rate: %w", err)
 	}
 
-	// Log success with detailed information
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeInflationRateUpdate,
-			sdk.NewAttribute(types.AttributeKeyPhase, p.Phase),
-			sdk.NewAttribute(types.AttributeKeyNewRate, p.NewRate.String()),
-			sdk.NewAttribute("previous_rate", currentRate.String()),
-			sdk.NewAttribute("rate_change", rateDifference.String()),
-		),
-	)
-
 	// Direction of change for logging
 	changeDirection := "increased by"
 	if rateDifference.IsNegative() {
@@ -112,7 +100,7 @@ func (k Keeper) HandleUpdateInflationProposal(ctx context.Context, p *types.Upda
 		rateDifference = rateDifference.Neg() // Make positive for display
 	}
 
-	sdkCtx.Logger().Info(
+	sdk.UnwrapSDKContext(ctx).Logger().Info(
 		fmt.Sprintf("Inflation rate for %s phase updated from %s to %s (%s %s)",
 			p.Phase,
 			currentRate.String(),

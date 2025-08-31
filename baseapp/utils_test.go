@@ -188,10 +188,6 @@ func incrementCounter(ctx context.Context,
 		msgCount = m.Counter
 	}
 
-	sdkCtx.EventManager().EmitEvents(
-		counterEvent(sdk.EventTypeMessage, msgCount),
-	)
-
 	_, err := incrementingCounter(t, store, deliverKey, msgCount)
 	if err != nil {
 		return nil, err
@@ -222,10 +218,6 @@ func anteHandlerTxTest(t *testing.T, capKey storetypes.StoreKey, storeKey []byte
 		if err != nil {
 			return ctx, err
 		}
-
-		ctx.EventManager().EmitEvents(
-			counterEvent("ante_handler", counter),
-		)
 
 		ctx = ctx.WithPriority(testTxPriority)
 		return ctx, nil

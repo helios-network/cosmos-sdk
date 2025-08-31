@@ -103,29 +103,5 @@ func BeginBlocker(ctx context.Context, k keeper.Keeper) error {
 		return err
 	}
 
-	// Emit minting event with phase information
-	var phaseInfo string
-	switch {
-	case totalSupply.LT(types.HeliosToBaseUnits(types.EarlyStageThreshold)):
-		phaseInfo = "early"
-	case totalSupply.LT(types.HeliosToBaseUnits(types.GrowthStageThreshold)):
-		phaseInfo = "growth"
-	case totalSupply.LT(types.HeliosToBaseUnits(types.MatureStageThreshold)):
-		phaseInfo = "mature"
-	default:
-		phaseInfo = "post-cap"
-	}
-
-	sdkCtx.EventManager().EmitEvent(
-		sdk.NewEvent(
-			types.EventTypeMint,
-			sdk.NewAttribute(types.AttributeKeyInflation, inflationRate.String()),
-			sdk.NewAttribute(types.AttributeKeyAnnualProvisions, minter.AnnualProvisions.String()),
-			sdk.NewAttribute(sdk.AttributeKeyAmount, mintPerBlock.TruncateInt().String()),
-			sdk.NewAttribute("phase", phaseInfo),
-			sdk.NewAttribute("total_supply", totalSupply.String()),
-		),
-	)
-
 	return nil
 }
