@@ -1207,12 +1207,13 @@ func (k Keeper) UnDelegateBoost(
 		return time.Time{}, math.ZeroInt(), fmt.Errorf("failed to undelegate boost: %w", err)
 	}
 
-	delegation, err := k.GetDelegation(ctx, delAddr, valbz)
-	if err == nil {
-		if delegation.TotalWeightedAmount.GT(math.ZeroInt()) {
-			return time.Time{}, math.ZeroInt(), fmt.Errorf("cannot undelegate ahelios until all other assets have been undelegated")
-		}
-	}
+	// Anyone can undelegate their boost : disabled
+	// delegation, err := k.GetDelegation(ctx, delAddr, valbz)
+	// if err == nil {
+	// 	// if delegation.TotalWeightedAmount.GT(math.ZeroInt()) {
+	// 	// 	return time.Time{}, math.ZeroInt(), fmt.Errorf("cannot undelegate ahelios until all other assets have been undelegated")
+	// 	// }
+	// }
 
 	if delegationBoost.Amount.LT(bondAmt) {
 		return time.Time{}, math.ZeroInt(), fmt.Errorf("insufficient boost delegation: available balance is %s, requested to undelegate %s", delegationBoost.Amount, bondAmt)
