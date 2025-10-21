@@ -324,6 +324,26 @@ func (k BaseKeeper) IterateAllDenomMetaData(ctx context.Context, cb func(types.M
 
 // SetDenomMetaData sets the denominations metadata
 func (k BaseKeeper) SetDenomMetaData(ctx context.Context, denomMetaData types.Metadata) {
+
+	// in case of update, we need to remove the chainmetadata key index for the old metadata
+	hasOldMetadata := k.HasDenomMetaData(ctx, denomMetaData.Base)
+	if hasOldMetadata {
+		oldMetadata, _ := k.GetDenomMetaData(ctx, denomMetaData.Base)
+		// remove chainmetadata removed from the new metadata
+		for _, oldChainMetadata := range oldMetadata.ChainsMetadatas {
+			found := false
+			for _, newChainMetadata := range denomMetaData.ChainsMetadatas {
+				if oldChainMetadata.ChainId == newChainMetadata.ChainId && oldChainMetadata.ContractAddress == newChainMetadata.ContractAddress {
+					found = true
+					break
+				}
+			}
+			if !found {
+				k.removeChainMetadataKeyIndex(ctx, oldChainMetadata)
+			}
+		}
+	}
+
 	_ = k.BaseViewKeeper.DenomMetadata.Set(ctx, denomMetaData.Base, denomMetaData)
 
 	if len(denomMetaData.ChainsMetadatas) > 0 {
@@ -354,6 +374,14 @@ func (k BaseKeeper) setChainMetadataKeyIndex(ctx context.Context, chainMetadata 
 	_ = k.OriginChainIndex.Set(ctx,
 		collections.Join(chainMetadata.ChainId, chainMetadata.ContractAddress),
 		denom)
+}
+
+func (k BaseKeeper) removeChainMetadataKeyIndex(ctx context.Context, chainMetadata *types.ChainMetadata) {
+	if chainMetadata.ChainId == 0 {
+		return
+	}
+
+	k.OriginChainIndex.Remove(ctx, collections.Join(chainMetadata.ChainId, chainMetadata.ContractAddress))
 }
 
 func (k BaseKeeper) GetDenomFromChainIdAndContractAddress(ctx context.Context, chainId uint64, contractAddress string) (string, bool) {
