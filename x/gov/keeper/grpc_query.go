@@ -64,7 +64,7 @@ func (q queryServer) Proposal(ctx context.Context, req *v1.QueryProposalRequest)
 // Proposals implements the Query/Proposals gRPC method
 func (q queryServer) Proposals(ctx context.Context, req *v1.QueryProposalsRequest) (*v1.QueryProposalsResponse, error) {
 	filteredProposals, pageRes, err := query.CollectionFilteredPaginate(ctx, q.k.Proposals, req.Pagination, func(key uint64, p v1.Proposal) (include bool, err error) {
-		matchVoter, matchDepositor, matchStatus := true, true, true
+		matchVoter, matchDepositor, matchStatus, matchProposer := true, true, true, true
 
 		// match status (if supplied/valid)
 		if v1.ValidProposalStatus(req.ProposalStatus) {
@@ -83,6 +83,10 @@ func (q queryServer) Proposals(ctx context.Context, req *v1.QueryProposalsReques
 			matchVoter = err == nil && has
 		}
 
+		if len(req.Proposer) > 0 && p.Proposer == req.Proposer {
+			matchProposer = true
+		}
+
 		// match depositor (if supplied)
 		if len(req.Depositor) > 0 {
 			depositor, err := q.k.authKeeper.AddressCodec().StringToBytes(req.Depositor)
@@ -95,7 +99,7 @@ func (q queryServer) Proposals(ctx context.Context, req *v1.QueryProposalsReques
 		}
 
 		// if all match, append to results
-		if matchVoter && matchDepositor && matchStatus {
+		if matchVoter && matchDepositor && matchStatus && matchProposer {
 			return true, nil
 		}
 		// continue to next item, do not include because we're appending results above.
