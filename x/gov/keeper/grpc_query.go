@@ -352,6 +352,7 @@ func (q legacyQueryServer) Proposals(ctx context.Context, req *v1beta1.QueryProp
 		Voter:          req.Voter,
 		Depositor:      req.Depositor,
 		Pagination:     req.Pagination,
+		Proposer:       req.Proposer,
 	})
 	if err != nil {
 		return nil, err
