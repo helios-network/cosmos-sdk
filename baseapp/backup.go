@@ -269,6 +269,7 @@ func (bm *BackupManager) installSnapshot(fileName string) error {
 
 func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backupDir string) (string, error) {
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
+	tempBackupName := fmt.Sprintf("tmp_snapshot_%d_%s", height, timestamp)
 	backupName := fmt.Sprintf("snapshot_%d_%s", height, timestamp)
 
 	configToml, err := os.ReadFile(filepath.Join(rootDir, "config", "config.toml"))
@@ -301,7 +302,7 @@ func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backu
 		return "", fmt.Errorf("failed to delete old snapshots: %w", err)
 	}
 
-	err = bm.createTarGzArchiveOfSelectedFilesAndDirs(filepath.Join(backupDir, backupName+".tar.gz"), []string{dataDir, configDir}, [][]string{dbFilesToIncludeInSnapshot, configFilesToIncludeInSnapshot})
+	err = bm.createTarGzArchiveOfSelectedFilesAndDirs(filepath.Join(backupDir, tempBackupName+".tar.gz"), []string{dataDir, configDir}, [][]string{dbFilesToIncludeInSnapshot, configFilesToIncludeInSnapshot})
 	if err != nil {
 		if strings.Contains(err.Error(), "no such file or directory") {
 			time.Sleep(1000 * time.Millisecond)
@@ -309,6 +310,12 @@ func (bm *BackupManager) createBackupArchive(rootDir string, height int64, backu
 			return bm.createBackupArchive(rootDir, height, backupDir)
 		}
 		return "", fmt.Errorf("failed to create snapshot data archive: %w", err)
+	}
+
+	// rename temp backup to backup name
+	err = os.Rename(filepath.Join(backupDir, tempBackupName+".tar.gz"), filepath.Join(backupDir, backupName+".tar.gz"))
+	if err != nil {
+		return "", fmt.Errorf("failed to rename temp backup to backup name: %w", err)
 	}
 
 	return filepath.Join(backupDir, backupName+".tar.gz"), nil
