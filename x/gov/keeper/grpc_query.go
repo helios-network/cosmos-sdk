@@ -83,8 +83,8 @@ func (q queryServer) Proposals(ctx context.Context, req *v1.QueryProposalsReques
 			matchVoter = err == nil && has
 		}
 
-		if len(req.Proposer) > 0 && p.Proposer == req.Proposer {
-			matchProposer = true
+		if len(req.Proposer) > 0 && p.Proposer != req.Proposer {
+			matchProposer = false
 		}
 
 		// match depositor (if supplied)
