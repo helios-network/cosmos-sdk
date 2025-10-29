@@ -1,10 +1,12 @@
 package v1
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/cosmos/gogoproto/proto"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
@@ -24,6 +26,22 @@ func NewLegacyContent(content v1beta1.Content, authority string) (*MsgExecLegacy
 	}
 
 	return NewMsgExecLegacyContent(any, authority), nil
+}
+
+func NewLegacyContentFromProto(protoMsg proto.Message, authority string) (*MsgExecLegacyContent, error) {
+	any, err := codectypes.NewAnyWithValue(protoMsg)
+	if err != nil {
+		return nil, err
+	}
+	return NewMsgExecLegacyContent(any, authority), nil
+}
+
+func StringToLegacyContent(cdc codec.Codec, content string, authority string) (*MsgExecLegacyContent, error) {
+	var msg v1beta1.Content
+	if err := json.Unmarshal([]byte(content), &msg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal content: %w", err)
+	}
+	return NewLegacyContent(msg, authority)
 }
 
 // LegacyContentFromMessage extracts the legacy Content interface from a

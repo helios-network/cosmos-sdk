@@ -17,6 +17,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgVote{}, "cosmos-sdk/MsgVote")
 	legacy.RegisterAminoMsg(cdc, &MsgVoteWeighted{}, "cosmos-sdk/MsgVoteWeighted")
 	cdc.RegisterConcrete(&TextProposal{}, "cosmos-sdk/TextProposal", nil)
+	cdc.RegisterConcrete(&ModuleExecProposal{}, "cosmos-sdk/ModuleExecProposal", nil)
 }
 
 // RegisterInterfaces registers the interfaces types with the Interface Registry.
@@ -31,7 +32,10 @@ func RegisterInterfaces(registry codectypes.InterfaceRegistry) {
 		"cosmos.gov.v1beta1.Content",
 		(*Content)(nil),
 		&TextProposal{},
+		&ModuleExecProposal{},
 	)
+
+	registry.RegisterImplementations((*Content)(nil), &ModuleExecProposal{})
 
 	msgservice.RegisterMsgServiceDesc(registry, &_Msg_serviceDesc)
 }

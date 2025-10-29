@@ -43,6 +43,10 @@ func (k Keeper) GetAuthority() string {
 	return k.authority
 }
 
+func (k Keeper) Cdc() *codec.LegacyAmino {
+	return k.legacyAmino
+}
+
 // Logger returns a module-specific logger.
 func (k Keeper) Logger(ctx context.Context) log.Logger {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
