@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"slices"
 	"time"
 
 	"github.com/hashicorp/go-metrics"
@@ -270,6 +271,16 @@ func (k msgServer) EditValidator(ctx context.Context, msg *types.MsgEditValidato
 	return &types.MsgEditValidatorResponse{}, nil
 }
 
+var (
+	HeliosBetaMainnetWallets = []string{
+		"helios15adrj0ln69l20kwfzpw4gktkn6374mud0lvshm", // helios-supra
+		"helios1qpapzga9fnwehg666gqjmvyxh8vr2zjlu0ywle", // helios-hedge
+		"helios13qhc492qnsf87r08h2pmfhaqp9krmrteeq2ge9", // helios-inter
+		"helios1w25mx5ymr8vahshqmacuffj9r69rm4c9s6rxdf", // helios-peer
+		"helios10e3vtelt5s0u3sj7vpt5n3rkcq3kupsyr9gj23", // helios-unity
+	}
+)
+
 // Delegate defines a method for performing a delegation of coins from a delegator to a validator
 func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types.MsgDelegateResponse, error) {
 
@@ -286,6 +297,13 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 	delegatorAddress, err := k.authKeeper.AddressCodec().StringToBytes(msg.DelegatorAddress)
 	if err != nil {
 		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid delegator address: %s", err)
+	}
+
+	// get accAddres from validator address
+	valAddrAcc := sdk.AccAddress(valAddr)
+
+	if !slices.Contains(HeliosBetaMainnetWallets, valAddrAcc.String()) {
+		return nil, errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "delegation not allowed for non-helios beta-mainnet nodes")
 	}
 
 	if !msg.Amount.IsValid() || !msg.Amount.Amount.IsPositive() {
