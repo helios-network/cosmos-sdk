@@ -351,66 +351,8 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 
 // BeginRedelegate defines a method for performing a redelegation of coins from a source validator to a destination validator of given delegator
 func (k msgServer) BeginRedelegate(ctx context.Context, msg *types.MsgBeginRedelegate) (*types.MsgBeginRedelegateResponse, error) {
-	valSrcAddr, err := k.validatorAddressCodec.StringToBytes(msg.ValidatorSrcAddress)
-	if err != nil {
-		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid source validator address: %s", err)
-	}
-
-	valDstAddr, err := k.validatorAddressCodec.StringToBytes(msg.ValidatorDstAddress)
-	if err != nil {
-		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid destination validator address: %s", err)
-	}
-
-	delegatorAddress, err := k.authKeeper.AddressCodec().StringToBytes(msg.DelegatorAddress)
-	if err != nil {
-		return nil, sdkerrors.ErrInvalidAddress.Wrapf("invalid delegator address: %s", err)
-	}
-
-	if !msg.Amount.IsValid() || !msg.Amount.Amount.IsPositive() {
-		return nil, errorsmod.Wrap(
-			sdkerrors.ErrInvalidRequest,
-			"invalid shares amount",
-		)
-	}
-
-	shares, err := k.ValidateUnbondAmount(
-		ctx, delegatorAddress, valSrcAddr, msg.Amount.Amount,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	bondDenom, err := k.BondDenom(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if msg.Amount.Denom != bondDenom {
-		return nil, errorsmod.Wrapf(
-			sdkerrors.ErrInvalidRequest, "invalid coin denomination: got %s, expected %s", msg.Amount.Denom, bondDenom,
-		)
-	}
-
-	completionTime, err := k.BeginRedelegation(
-		ctx, delegatorAddress, valSrcAddr, valDstAddr, shares, bondDenom,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if msg.Amount.Amount.IsInt64() {
-		defer func() {
-			telemetry.IncrCounter(1, types.ModuleName, "redelegate")
-			telemetry.SetGaugeWithLabels(
-				[]string{"tx", "msg", sdk.MsgTypeURL(msg)},
-				float32(msg.Amount.Amount.Int64()),
-				[]metrics.Label{telemetry.NewLabel("denom", msg.Amount.Denom)},
-			)
-		}()
-	}
-
 	return &types.MsgBeginRedelegateResponse{
-		CompletionTime: completionTime,
+		CompletionTime: time.Time{},
 	}, nil
 }
 
