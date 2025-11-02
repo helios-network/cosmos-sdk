@@ -9,12 +9,11 @@ option go_package = "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1";
 
 // Un content legacy générique, modulable
 message ModuleExecProposal {
-  string title = 1;
+  string title       = 1;
   string description = 2;
   // route du legacy handler (ex: "slashing", "staking", "bank", etc.)
   string route = 3;
 
   // une ou plusieurs sdk.Msg encodées en Any
-  repeated google.protobuf.Any messages = 4
-    [(cosmos_proto.accepts_interface) = "cosmos.base.v1beta1.Msg"];
+  repeated google.protobuf.Any messages = 4 [(cosmos_proto.accepts_interface) = "cosmos.base.v1beta1.Msg"];
 }
