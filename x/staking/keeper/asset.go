@@ -169,6 +169,101 @@ func (k Keeper) ConvertAssetToSDKCoin(ctx sdk.Context, denom string, amount math
 	return sdk.Coin{}, fmt.Errorf("denom %s not found in staking assets: %s", denom, baseDenom)
 }
 
+func (k Keeper) RemoveAssetWeight(
+	delegation *types.Delegation,
+	denom string,
+	amountToRemove math.Int,
+	ctx sdk.Context,
+) error {
+	if delegation == nil {
+		return fmt.Errorf("delegation cannot be nil")
+	}
+
+	if delegation.AssetWeights == nil {
+		return nil // No asset weights to remove
+	}
+
+	assetWeightIndex := -1
+	for i, aw := range delegation.AssetWeights {
+		if aw.Denom == denom {
+			assetWeightIndex = i
+			break
+		}
+	}
+
+	if assetWeightIndex == -1 {
+		return fmt.Errorf("asset weight for denom %s not found", denom)
+	}
+
+	assetWeight := delegation.AssetWeights[assetWeightIndex]
+
+	if amountToRemove.IsNegative() {
+		return fmt.Errorf("amount to remove cannot be negative")
+	}
+
+	// Calculate new weighted amount
+	newWeightedAmount := assetWeight.WeightedAmount.Sub(amountToRemove)
+
+	if newWeightedAmount.IsNegative() {
+		return fmt.Errorf("cannot remove more than existing weighted amount")
+	}
+
+	// Get the weight factor for this asset
+	stakingAssets := k.erc20Keeper.GetAllStakingAssets(ctx)
+	var weightFactor math.Int
+	foundWeight := false
+	for _, asset := range stakingAssets {
+		if asset.GetDenom() == denom {
+			weightFactor = math.NewIntFromUint64(asset.GetBaseWeight())
+			foundWeight = true
+			break
+		}
+	}
+
+	if !foundWeight {
+		return fmt.Errorf("staking asset for denom %s not found", denom)
+	}
+
+	if weightFactor.IsZero() {
+		return fmt.Errorf("weight factor for denom %s is zero, cannot divide", denom)
+	}
+
+	// Calculate new base amount
+	newBaseAmount := assetWeight.BaseAmount.Sub(amountToRemove.Quo(weightFactor))
+
+	// Check if the asset should be completely removed
+	shouldRemove := false
+	if newWeightedAmount.IsZero() {
+		shouldRemove = true
+	} else {
+		// If weightedAmount / baseWeight < 1, it means the baseAmount would be 0, so remove the asset
+		// This handles the residual amount problem.
+		weightedDec := math.LegacyNewDecFromInt(newWeightedAmount)
+		baseWeightDec := math.LegacyNewDecFromInt(weightFactor)
+		if weightedDec.Quo(baseWeightDec).LT(math.LegacyNewDec(1)) {
+			shouldRemove = true
+		}
+	}
+
+	if shouldRemove {
+		// Remove the entire asset weight if no amount remains or it's a residual
+		delegation.AssetWeights = append(delegation.AssetWeights[:assetWeightIndex], delegation.AssetWeights[assetWeightIndex+1:]...)
+	} else {
+		// Update the asset weight with reduced amounts
+		assetWeight.WeightedAmount = newWeightedAmount
+		assetWeight.BaseAmount = newBaseAmount
+		delegation.AssetWeights[assetWeightIndex] = assetWeight
+	}
+
+	// Recalculate total weighted amount
+	delegation.TotalWeightedAmount = math.ZeroInt()
+	for _, aw := range delegation.AssetWeights {
+		delegation.TotalWeightedAmount = delegation.TotalWeightedAmount.Add(aw.WeightedAmount)
+	}
+
+	return nil
+}
+
 func (k Keeper) UpdateOrRemoveAssetWeight(
 	delegation *types.Delegation,
 	denom string,

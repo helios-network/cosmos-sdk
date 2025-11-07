@@ -1476,9 +1476,7 @@ func (k Keeper) Unbond(
 		validator = k.mustGetValidator(ctx, valbz)
 	}
 
-	if delegation.Shares.IsZero() {
-		err = k.RemoveDelegation(ctx, delegation)
-	} else {
+	if !delegation.Shares.IsZero() {
 		if err = k.SetDelegation(ctx, delegation); err != nil {
 			return amount, err
 		}
@@ -1605,9 +1603,29 @@ func (k Keeper) Undelegate(
 			return time.Time{}, math.Int{}, err
 		}
 
+		// if err := k.RemoveAssetWeight(&delegation, erc20Denom, returnAmount, sdkCtx); err != nil {
+		// 	return time.Time{}, math.Int{}, err
+		// }
+
 		// Save the updated delegation
 		if err := k.SetDelegation(ctx, delegation); err != nil {
 			return time.Time{}, math.Int{}, err
+		}
+
+		// Check if the delegation should be removed completely
+		if len(delegation.AssetWeights) == 0 {
+			// Get the total boosted delegation for this delegator and validator
+			boost, err := k.GetTotalBoostedDelegation(ctx, delAddr, valbz)
+			if err != nil && !errors.Is(err, types.ErrNoDelegation) {
+				return time.Time{}, math.Int{}, err
+			}
+
+			if errors.Is(err, types.ErrNoDelegation) && boost.Amount.IsZero() {
+				// If no asset weights and no boost, remove the entire delegation
+				if err := k.RemoveDelegation(ctx, delegation); err != nil {
+					return time.Time{}, math.Int{}, err
+				}
+			}
 		}
 	}
 

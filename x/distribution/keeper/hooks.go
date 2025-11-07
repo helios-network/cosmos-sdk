@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 
 	sdkmath "cosmossdk.io/math"
 
@@ -144,7 +145,7 @@ func (h Hooks) BeforeDelegationSharesModified(ctx context.Context, delAddr sdk.A
 		return err
 	}
 
-	if _, err := h.k.withdrawDelegationRewards(ctx, val, del); err != nil {
+	if _, err := h.k.withdrawDelegationRewards(ctx, val, del); err != nil && !errors.Is(err, types.ErrEmptyDelegationDistInfo) {
 		return err
 	}
 
