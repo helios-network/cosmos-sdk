@@ -10,7 +10,7 @@ import (
 // Default parameter namespace
 const (
 	DefaultSignedBlocksWindow   = int64(100)
-	DefaultDowntimeJailDuration = 60 * 10 * time.Second
+	DefaultDowntimeJailDuration = 60 * 10 * time.Second // 10 minutes
 )
 
 var (
