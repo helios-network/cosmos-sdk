@@ -142,9 +142,6 @@ func (store *Store) Commit(height uint64) error {
 
 		// Update latest height
 		store.flushLatestHeight(height)
-
-		fmt.Printf("Store %s committed %d new keys at height %d\n",
-			store.name, len(commitData.NewKeysCreated), height)
 	}
 
 	// Write changes to underlying store
@@ -299,9 +296,6 @@ func (store *Store) DeleteFromBaseVersionTo(retainHeight uint64) error {
 
 	// Update base height
 	store.flushBaseHeight(retainHeight + 1)
-
-	fmt.Printf("Store %s deleted %d keys and commits from height %d to %d, new baseHeight: %d\n",
-		store.name, len(keysToDelete), baseHeight, retainHeight, retainHeight+1)
 
 	return nil
 }
