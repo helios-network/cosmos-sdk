@@ -69,16 +69,16 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 
 	logger := k.Logger(ctx)
 
-	// Todo download the upgrade binary and prepare it on the storage randomly between the period have a chance to download the binary who is increased in the future
-	// to have 100% of chance of download at term deadline
-
-	fmt.Println("Verifying if the binary has been downloaded for the plan")
-	if !k.VerifyIfTheBinaryHasBeenDownloadedForThePlan(plan) && blockHeight <= plan.Height {
-		fmt.Println("Downloading the upgrade binary and preparing it on the storage")
-		// Download the upgrade binary and prepare it on the storage
-		err := k.TryDownloadUpgradeBinary(ctx, plan, []string{"https://github.com/helios-network/helios-core/releases/download/"}, "heliades")
-		if err != nil {
-			return nil, err
+	if blockHeight <= plan.Height {
+		if !k.VerifyIfTheBinaryHasBeenDownloadedForThePlan(plan) {
+			fmt.Println("Downloading the upgrade binary and preparing it on the storage")
+			// Download the upgrade binary and prepare it on the storage
+			err := k.TryDownloadUpgradeBinary(ctx, plan, []string{"https://github.com/helios-network/helios-core/releases/download/"}, "heliades")
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			fmt.Println("Plan binary is ready to be applied")
 		}
 	}
 
