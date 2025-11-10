@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	"cosmossdk.io/core/appmodule"
-	storetypes "cosmossdk.io/store/types"
 	"cosmossdk.io/x/upgrade/keeper"
 	"cosmossdk.io/x/upgrade/types"
 
@@ -26,12 +26,19 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 	defer telemetry.ModuleMeasureSince(types.ModuleName, telemetry.Now(), telemetry.MetricKeyBeginBlocker)
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	appVersion := k.GetAppVersion(ctx)
+
+	fmt.Println("App version", appVersion)
+
 	blockHeight := sdkCtx.HeaderInfo().Height
 	plan, err := k.GetUpgradePlan(ctx)
 	if err != nil && !errors.Is(err, types.ErrNoUpgradePlanFound) {
+		fmt.Println("Error getting the upgrade plan", err)
 		return nil, err
 	}
 	found := err == nil
+
+	fmt.Println("Found upgrade plan", found)
 
 	if !k.DowngradeVerified() {
 		k.SetDowngradeVerified(true)
@@ -46,26 +53,34 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 				return nil, err
 			}
 
-			if lastAppliedPlan != "" && !k.HasHandler(lastAppliedPlan) {
-				var appVersion uint64
-
-				cp := sdkCtx.ConsensusParams()
-				if cp.Version != nil {
-					appVersion = cp.Version.App
-				}
-
-				return nil, fmt.Errorf("wrong app version %d, upgrade handler is missing for %s upgrade plan", appVersion, lastAppliedPlan)
+			fmt.Println("Last applied plan", lastAppliedPlan)
+			if lastAppliedPlan != "" {
+				return nil, fmt.Errorf("wrong app version %s, upgrade handler is missing for %s upgrade plan", appVersion, lastAppliedPlan)
 			}
 		}
 	}
 
 	if !found {
+		fmt.Println("No upgrade plan found")
 		return &sdk.ResponsePreBlock{
 			ConsensusParamsChanged: false,
 		}, nil
 	}
 
 	logger := k.Logger(ctx)
+
+	// Todo download the upgrade binary and prepare it on the storage randomly between the period have a chance to download the binary who is increased in the future
+	// to have 100% of chance of download at term deadline
+
+	fmt.Println("Verifying if the binary has been downloaded for the plan")
+	if !k.VerifyIfTheBinaryHasBeenDownloadedForThePlan(plan) && blockHeight <= plan.Height {
+		fmt.Println("Downloading the upgrade binary and preparing it on the storage")
+		// Download the upgrade binary and prepare it on the storage
+		err := k.TryDownloadUpgradeBinary(ctx, plan, []string{"https://github.com/helios-network/helios-core/releases/download/"}, "heliades")
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	// To make sure clear upgrade is executed at the same block
 	if plan.ShouldExecute(blockHeight) {
@@ -83,43 +98,26 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 			}, nil
 		}
 
-		// Prepare shutdown if we don't have an upgrade handler for this upgrade name (meaning this software is out of date)
-		if !k.HasHandler(plan.Name) {
-			// Write the upgrade info to disk. The UpgradeStoreLoader uses this info to perform or skip
-			// store migrations.
-			err := k.DumpUpgradeInfoToDisk(blockHeight, plan)
-			if err != nil {
-				return nil, fmt.Errorf("unable to write upgrade info to filesystem: %w", err)
-			}
-
-			upgradeMsg := BuildUpgradeNeededMsg(plan)
-			logger.Error(upgradeMsg)
-
-			// Returning an error will end up in a panic
-			return nil, errors.New(upgradeMsg)
+		// Write the upgrade info to disk. The UpgradeStoreLoader uses this info to perform or skip
+		// store migrations.
+		err := k.DumpUpgradeInfoToDisk(blockHeight, plan)
+		if err != nil {
+			return nil, fmt.Errorf("unable to write upgrade info to filesystem: %w", err)
 		}
 
-		// We have an upgrade handler for this upgrade name, so apply the upgrade
-		logger.Info(fmt.Sprintf("applying upgrade \"%s\" at %s", plan.Name, plan.DueAt()))
-		sdkCtx = sdkCtx.WithBlockGasMeter(storetypes.NewInfiniteGasMeter())
-		if err := k.ApplyUpgrade(sdkCtx, plan); err != nil {
-			return nil, err
+		upgradeMsg := BuildUpgradeNeededMsg(plan)
+		logger.Error(upgradeMsg)
+
+		err = k.ApplyUpgrade(ctx, plan)
+		if err != nil {
+			return nil, fmt.Errorf("unable to apply upgrade: %w", err)
 		}
-		return &sdk.ResponsePreBlock{
-			// the consensus parameters might be modified in the migration,
-			// refresh the consensus parameters in context.
-			ConsensusParamsChanged: true,
-		}, nil
-	}
 
-	// if we have a pending upgrade, but it is not yet time, make sure we did not
-	// set the handler already
-	if k.HasHandler(plan.Name) {
-		downgradeMsg := fmt.Sprintf("BINARY UPDATED BEFORE TRIGGER! UPGRADE \"%s\" - in binary but not executed on chain. Downgrade your binary", plan.Name)
-		logger.Error(downgradeMsg)
-
+		// stop the node
+		fmt.Println("Stopping the node")
+		os.Exit(1)
 		// Returning an error will end up in a panic
-		return nil, errors.New(downgradeMsg)
+		return nil, errors.New(upgradeMsg)
 	}
 	return &sdk.ResponsePreBlock{
 		ConsensusParamsChanged: false,

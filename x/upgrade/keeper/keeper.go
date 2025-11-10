@@ -1,16 +1,24 @@
 package keeper
 
 import (
+	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/go-metrics"
 
@@ -454,56 +462,23 @@ func (k Keeper) HasHandler(name string) bool {
 	return ok
 }
 
-// ApplyUpgrade will execute the handler associated with the Plan and mark the plan as done.
+// ApplyUpgrade will execute the upgrade binary and mark the plan as done.
 func (k Keeper) ApplyUpgrade(ctx context.Context, plan types.Plan) error {
-	handler := k.upgradeHandlers[plan.Name]
-	if handler == nil {
-		return fmt.Errorf("ApplyUpgrade should never be called without first checking HasHandler")
-	}
-
-	vm, err := k.GetModuleVersionMap(ctx)
+	upgradeBinaryDirPath := k.GetUpgradeBinaryDirPath()
+	planInfo, err := plan.GetPlanInfo()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get plan info: %w", err)
 	}
-
-	updatedVM, err := handler(ctx, plan, vm)
+	version := planInfo.Version
+	upgradeBinaryPath := filepath.Join(upgradeBinaryDirPath, version)
+	// locate heliades binary path
+	heliadesPath := k.GetHeliadesBinaryPath()
+	// move downloaded binary to the actual heliades binary path
+	err = os.Rename(upgradeBinaryPath, heliadesPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to move upgrade binary to heliades binary path: %w", err)
 	}
-
-	err = k.SetModuleVersionMap(ctx, updatedVM)
-	if err != nil {
-		return err
-	}
-
-	// incremement the protocol version and set it in state and baseapp
-	nextProtocolVersion, err := k.getProtocolVersion(ctx)
-	if err != nil {
-		return err
-	}
-	nextProtocolVersion++
-	err = k.setProtocolVersion(ctx, nextProtocolVersion)
-	if err != nil {
-		return err
-	}
-
-	if k.versionSetter != nil {
-		// set protocol version on BaseApp
-		k.versionSetter.SetProtocolVersion(nextProtocolVersion)
-	}
-
-	// Must clear IBC state after upgrade is applied as it is stored separately from the upgrade plan.
-	// This will prevent resubmission of upgrade msg after upgrade is already completed.
-	err = k.ClearIBCState(ctx, plan.Height)
-	if err != nil {
-		return err
-	}
-
-	err = k.ClearUpgradePlan(ctx)
-	if err != nil {
-		return err
-	}
-
+	fmt.Println("Upgrade binary moved to", heliadesPath)
 	return k.setDone(ctx, plan.Name)
 }
 
@@ -529,7 +504,7 @@ func (k Keeper) DumpUpgradeInfoToDisk(height int64, p types.Plan) error {
 		return err
 	}
 
-	return os.WriteFile(upgradeInfoFilePath, info, 0o600)
+	return os.WriteFile(upgradeInfoFilePath, info, 0o755)
 }
 
 // GetUpgradeInfoPath returns the upgrade info file path
@@ -540,6 +515,10 @@ func (k Keeper) GetUpgradeInfoPath() (string, error) {
 	}
 
 	return filepath.Join(upgradeInfoFileDir, types.UpgradeInfoFilename), nil
+}
+
+func (k Keeper) GetUpgradeBinaryDirPath() string {
+	return path.Join(k.getHomeDir(), "upgrades-binaries")
 }
 
 // getHomeDir returns the height at which the given upgrade was executed
@@ -588,4 +567,196 @@ func (k *Keeper) SetDowngradeVerified(v bool) {
 // DowngradeVerified returns downgradeVerified.
 func (k Keeper) DowngradeVerified() bool {
 	return k.downgradeVerified
+}
+
+func (k Keeper) VerifyIfTheBinaryHasBeenDownloadedForThePlan(plan types.Plan) bool {
+	upgradeBinaryDirPath := k.GetUpgradeBinaryDirPath()
+	planInfo, err := plan.GetPlanInfo()
+	if err != nil {
+		fmt.Println("Error getting plan info:", err)
+		return false
+	}
+	fmt.Println("Plan info", planInfo)
+
+	version := planInfo.Version
+	upgradeBinaryPath := filepath.Join(upgradeBinaryDirPath, version)
+
+	stat, err := os.Stat(upgradeBinaryPath)
+	if err != nil {
+		fmt.Println("File does not exist or stat error:", err)
+		return false
+	}
+
+	// Check size
+	if stat.Size() != planInfo.Size {
+		fmt.Printf("Size mismatch: file=%d plan=%d\n", stat.Size(), planInfo.Size)
+		return false
+	}
+
+	// Open the file and hash in streaming (avoid allocating all in memory)
+	f, err := os.Open(upgradeBinaryPath)
+	if err != nil {
+		fmt.Println("Error opening file:", err)
+		return false
+	}
+	defer f.Close()
+
+	hasher := sha256.New()
+	written, err := io.Copy(hasher, f)
+	if err != nil {
+		fmt.Println("Error hashing file:", err)
+		return false
+	}
+	_ = written // to debug if needed
+
+	hashBytes := hasher.Sum(nil) // hash correct of 32 bytes
+	actualHash := hex.EncodeToString(hashBytes)
+
+	// Normalize plan hash (remove 0x if present, and in lowercase)
+	expectedHash := planInfo.Hash
+	if strings.HasPrefix(expectedHash, "0x") || strings.HasPrefix(expectedHash, "0X") {
+		expectedHash = expectedHash[2:]
+	}
+	expectedHash = strings.ToLower(expectedHash)
+
+	fmt.Println("Hash of the binary", actualHash)
+	fmt.Println("Hash of the plan info", expectedHash)
+
+	// Constant time comparison
+	if len(expectedHash) != len(actualHash) {
+		return false
+	}
+	// subtle.ConstantTimeCompare operates on []byte
+	match := subtle.ConstantTimeCompare([]byte(actualHash), []byte(expectedHash)) == 1
+	return match
+}
+
+func (k Keeper) TryDownloadUpgradeBinary(
+	ctx context.Context,
+	plan types.Plan,
+	trustedHosts []string,
+	extension string,
+) error {
+	upgradeBinaryDirPath := k.GetUpgradeBinaryDirPath()
+
+	if _, err := os.Stat(upgradeBinaryDirPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(upgradeBinaryDirPath, 0o755); err != nil {
+			return fmt.Errorf("failed to create upgrade binary directory: %w", err)
+		}
+	}
+
+	planInfo, err := plan.GetPlanInfo()
+	if err != nil {
+		return err
+	}
+
+	version := planInfo.Version
+	upgradeBinaryPath := filepath.Join(upgradeBinaryDirPath, version)
+	fmt.Println("Upgrade binary path:", upgradeBinaryPath)
+
+	for _, trustedHost := range trustedHosts {
+		host := strings.TrimSuffix(trustedHost, "/")
+		url := fmt.Sprintf("%s/%s/%s", host, version, extension)
+		fmt.Println("Trying URL:", url)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			fmt.Println("Error on GET:", err)
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			fmt.Println("Non 200 status code:", resp.StatusCode)
+			resp.Body.Close()
+			continue
+		}
+
+		var reader io.Reader = resp.Body
+
+		// Decompression streaming si fichier gz
+		if strings.HasSuffix(url, ".gz") {
+			fmt.Println("Streaming decompression (gzip)")
+			gz, err := gzip.NewReader(resp.Body)
+			if err != nil {
+				resp.Body.Close()
+				fmt.Println("Error creating gzip reader:", err)
+				continue
+			}
+			defer gz.Close()
+			reader = gz
+		}
+
+		// Création d'un fichier temporaire → sécurité si erreur
+		tmpPath := upgradeBinaryPath + ".tmp"
+		out, err := os.Create(tmpPath)
+		if err != nil {
+			resp.Body.Close()
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+
+		hasher := sha256.New()
+
+		// Copier le stream dans le fichier et dans le hasher simultanément
+		_, err = io.Copy(io.MultiWriter(out, hasher), reader)
+
+		resp.Body.Close()
+		out.Close()
+
+		if err != nil {
+			os.Remove(tmpPath)
+			fmt.Println("Error during streaming download:", err)
+			continue
+		}
+
+		// Vérification du hash
+		actualHash := hex.EncodeToString(hasher.Sum(nil))
+
+		if strings.HasPrefix(planInfo.Hash, "0x") {
+			planInfo.Hash = strings.Replace(planInfo.Hash, "0x", "", 1)
+		}
+		if actualHash != planInfo.Hash {
+			fmt.Println("Hash mismatch, deleting temp file", actualHash, planInfo.Hash)
+			os.Remove(tmpPath)
+			continue
+		}
+
+		// Hash OK → rename
+		if err := os.Rename(tmpPath, upgradeBinaryPath); err != nil {
+			fmt.Println("Error renaming file:", err)
+			continue
+		}
+
+		if err := os.Chmod(upgradeBinaryPath, 0o755); err != nil {
+			fmt.Println("Warning: failed to chmod binary:", err)
+		}
+
+		fmt.Println("Download + verification OK ✅")
+		return nil
+	}
+
+	return fmt.Errorf("failed to download binary from trusted hosts")
+}
+
+func (k Keeper) GetHeliadesBinaryPath() string {
+	command := exec.Command("which", "heliades")
+	output, err := command.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func (k Keeper) GetAppVersion(ctx context.Context) string {
+	heliadesPath := k.GetHeliadesBinaryPath()
+	output, err := exec.Command(heliadesPath, "version").Output()
+	if err != nil {
+		return ""
+	}
+	var version struct {
+		Version string `json:"version"`
+	}
+	err = json.Unmarshal(output, &version)
+	if err != nil {
+		return ""
+	}
+	return version.Version
 }
