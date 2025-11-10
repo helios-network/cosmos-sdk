@@ -69,13 +69,19 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 
 	logger := k.Logger(ctx)
 
-	if blockHeight <= plan.Height {
+	planInfo, err := plan.GetPlanInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	// skip if current version is the version of the plan and the binary is not downloaded
+	if blockHeight <= plan.Height && appVersion != planInfo.Version {
 		if !k.VerifyIfTheBinaryHasBeenDownloadedForThePlan(plan) {
 			fmt.Println("Downloading the upgrade binary and preparing it on the storage")
 			// Download the upgrade binary and prepare it on the storage
 			err := k.TryDownloadUpgradeBinary(ctx, plan, []string{"https://github.com/helios-network/helios-core/releases/download/"}, "heliades")
 			if err != nil {
-				return nil, err
+				fmt.Println("Error downloading the upgrade binary", err)
 			}
 		} else {
 			fmt.Println("Plan binary is ready to be applied")
