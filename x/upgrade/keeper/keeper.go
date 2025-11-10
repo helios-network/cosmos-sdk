@@ -760,3 +760,92 @@ func (k Keeper) GetAppVersion(ctx context.Context) string {
 	}
 	return version.Version
 }
+
+// ParseVersion enlève le préfixe 'v' si présent
+func (k Keeper) ParseVersion(version string) string {
+	return strings.TrimPrefix(version, "v")
+}
+
+// VersionIsOlderThan retourne true si appVersion < planVersion (SemVer-compatible)
+func (k Keeper) VersionIsOlderThan(appVersion string, planVersion string) bool {
+	app := k.ParseVersion(appVersion)
+	plan := k.ParseVersion(planVersion)
+
+	// Split pre-release (ex: 1.0.0-alpha)
+	appMain, appPre := splitVersion(app)
+	planMain, planPre := splitVersion(plan)
+
+	// Compare major.minor.patch
+	if cmp := compareMainParts(appMain, planMain); cmp != 0 {
+		return cmp < 0
+	}
+
+	// Si version principale identique → gérer pré-release (alpha, beta, etc.)
+	return comparePreRelease(appPre, planPre) < 0
+}
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+// Sépare "1.0.1-alpha" → "1.0.1" , "alpha"
+func splitVersion(version string) (main string, pre string) {
+	if strings.Contains(version, "-") {
+		parts := strings.SplitN(version, "-", 2)
+		return parts[0], parts[1]
+	}
+	return version, ""
+}
+
+// Compare "1.0.10" et "1.0.2"
+func compareMainParts(v1, v2 string) int {
+	p1 := strings.Split(v1, ".")
+	p2 := strings.Split(v2, ".")
+
+	for i := 0; i < len(p1) || i < len(p2); i++ {
+		var n1, n2 int
+
+		if i < len(p1) {
+			n1, _ = strconv.Atoi(p1[i])
+		}
+		if i < len(p2) {
+			n2, _ = strconv.Atoi(p2[i])
+		}
+
+		if n1 != n2 {
+			if n1 < n2 {
+				return -1
+			}
+			return 1
+		}
+	}
+
+	return 0
+}
+
+// Compare pré-release selon SemVer : "" > alpha > beta > rc
+func comparePreRelease(a, b string) int {
+	if a == b {
+		return 0
+	}
+
+	// Version release (sans suffixe) > pré-release
+	if a == "" {
+		return 1
+	}
+	if b == "" {
+		return -1
+	}
+
+	priority := map[string]int{
+		"alpha": 1,
+		"beta":  2,
+		"rc":    3,
+	}
+
+	// Alpha < Beta < RC (par défaut comparaison alpha-numérique)
+	pa := priority[a]
+	pb := priority[b]
+
+	return pa - pb
+}

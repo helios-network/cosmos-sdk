@@ -38,28 +38,6 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 	}
 	found := err == nil
 
-	fmt.Println("Found upgrade plan", found)
-
-	if !k.DowngradeVerified() {
-		k.SetDowngradeVerified(true)
-		// This check will make sure that we are using a valid binary.
-		// It'll panic in these cases if there is no upgrade handler registered for the last applied upgrade.
-		// 1. If there is no scheduled upgrade.
-		// 2. If the plan is not ready.
-		// 3. If the plan is ready and skip upgrade height is set for current height.
-		if !found || !plan.ShouldExecute(blockHeight) || (plan.ShouldExecute(blockHeight) && k.IsSkipHeight(blockHeight)) {
-			lastAppliedPlan, _, err := k.GetLastCompletedUpgrade(ctx)
-			if err != nil {
-				return nil, err
-			}
-
-			fmt.Println("Last applied plan", lastAppliedPlan)
-			if lastAppliedPlan != "" {
-				return nil, fmt.Errorf("wrong app version %s, upgrade handler is missing for %s upgrade plan", appVersion, lastAppliedPlan)
-			}
-		}
-	}
-
 	if !found {
 		fmt.Println("No upgrade plan found")
 		return &sdk.ResponsePreBlock{
@@ -74,8 +52,15 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 		return nil, err
 	}
 
+	if k.VersionIsOlderThan(appVersion, planInfo.Version) {
+		fmt.Println("Current version is older than the plan version, skipping upgrade")
+		return &sdk.ResponsePreBlock{
+			ConsensusParamsChanged: false,
+		}, nil
+	}
+
 	// skip if current version is the version of the plan and the binary is not downloaded
-	if blockHeight <= plan.Height && appVersion != planInfo.Version {
+	if blockHeight <= plan.Height {
 		if !k.VerifyIfTheBinaryHasBeenDownloadedForThePlan(plan) {
 			fmt.Println("Downloading the upgrade binary and preparing it on the storage")
 			// Download the upgrade binary and prepare it on the storage
@@ -89,7 +74,7 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 	}
 
 	// To make sure clear upgrade is executed at the same block
-	if plan.ShouldExecute(blockHeight) && appVersion != planInfo.Version {
+	if plan.ShouldExecute(blockHeight) {
 		// If skip upgrade has been set for current height, we clear the upgrade plan
 		if k.IsSkipHeight(blockHeight) {
 			skipUpgradeMsg := fmt.Sprintf("UPGRADE \"%s\" SKIPPED at %d: %s", plan.Name, plan.Height, plan.Info)
