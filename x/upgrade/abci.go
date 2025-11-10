@@ -89,7 +89,7 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 	}
 
 	// To make sure clear upgrade is executed at the same block
-	if plan.ShouldExecute(blockHeight) {
+	if plan.ShouldExecute(blockHeight) && appVersion != planInfo.Version {
 		// If skip upgrade has been set for current height, we clear the upgrade plan
 		if k.IsSkipHeight(blockHeight) {
 			skipUpgradeMsg := fmt.Sprintf("UPGRADE \"%s\" SKIPPED at %d: %s", plan.Name, plan.Height, plan.Info)
