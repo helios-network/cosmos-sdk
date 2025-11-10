@@ -26,9 +26,6 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 	defer telemetry.ModuleMeasureSince(types.ModuleName, telemetry.Now(), telemetry.MetricKeyBeginBlocker)
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	appVersion := k.GetAppVersion(ctx)
-
-	fmt.Println("App version", appVersion)
 
 	blockHeight := sdkCtx.HeaderInfo().Height
 	plan, err := k.GetUpgradePlan(ctx)
@@ -39,12 +36,11 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 	found := err == nil
 
 	if !found {
-		fmt.Println("No upgrade plan found")
 		return &sdk.ResponsePreBlock{
 			ConsensusParamsChanged: false,
 		}, nil
 	}
-
+	appVersion := k.GetAppVersion(ctx)
 	logger := k.Logger(ctx)
 
 	planInfo, err := plan.GetPlanInfo()
@@ -52,8 +48,8 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 		return nil, err
 	}
 
-	if k.VersionIsOlderThan(appVersion, planInfo.Version) {
-		fmt.Println("Current version is older than the plan version, skipping upgrade")
+	if !k.VersionIsOlderThan(appVersion, planInfo.Version) {
+		fmt.Println("AppVersion (", appVersion, ") is up to date with the plan version (", planInfo.Version, "), skipping upgrade")
 		return &sdk.ResponsePreBlock{
 			ConsensusParamsChanged: false,
 		}, nil
@@ -106,8 +102,7 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 
 		// stop the node
 		fmt.Println("Stopping the node")
-		os.Exit(1)
-		// Returning an error will end up in a panic
+		os.Exit(42000) // exit code 42000 is used to indicate that the node should be restarted immediately
 		return nil, errors.New(upgradeMsg)
 	}
 	return &sdk.ResponsePreBlock{
