@@ -50,6 +50,12 @@ var (
 
 	// TokensCountKey is the prefix for the tokens count for a holder.
 	TokensCountKey = collections.NewPrefix(10)
+
+	// DenomMetadataCountKey is the prefix for the denom metadata count.
+	DenomMetadataCountKey = collections.NewPrefix(11)
+
+	// ChainIdMetadataCountIndexKey is the prefix for the chain id metadata count index.
+	ChainIdMetadataCountIndexKey = collections.NewPrefix(12)
 )
 
 // BalanceValueCodec is a codec for encoding bank balances in a backwards compatible way.

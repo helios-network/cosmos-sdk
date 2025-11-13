@@ -64,38 +64,42 @@ type BaseViewKeeper struct {
 	ak            types.AccountKeeper
 	logger        log.Logger
 
-	Schema             collections.Schema
-	Supply             collections.Map[string, math.Int]
-	HoldersCount       collections.Map[string, uint64]
-	TokensCount        collections.Map[string, uint64]
-	HoldersSortedIndex collections.Map[collections.Pair[uint64, string], bool]
-	OriginChainIndex   collections.Map[collections.Pair[uint64, string], string]
-	ChainHoldersIndex  collections.Map[collections.Triple[uint64, uint64, string], bool]
-	DenomMetadata      collections.Map[string, types.Metadata]
-	SendEnabled        collections.Map[string, bool]
-	Balances           *collections.IndexedMap[collections.Pair[sdk.AccAddress, string], math.Int, BalancesIndexes]
-	Params             collections.Item[types.Params]
+	Schema                    collections.Schema
+	Supply                    collections.Map[string, math.Int]
+	HoldersCount              collections.Map[string, uint64]
+	TokensCount               collections.Map[string, uint64]
+	HoldersSortedIndex        collections.Map[collections.Pair[uint64, string], bool]
+	OriginChainIndex          collections.Map[collections.Pair[uint64, string], string]
+	ChainHoldersIndex         collections.Map[collections.Triple[uint64, uint64, string], bool]
+	DenomMetadata             collections.Map[string, types.Metadata]
+	DenomMetadataCount        collections.Item[uint64]
+	ChainIdMetadataCountIndex collections.Map[uint64, uint64]
+	SendEnabled               collections.Map[string, bool]
+	Balances                  *collections.IndexedMap[collections.Pair[sdk.AccAddress, string], math.Int, BalancesIndexes]
+	Params                    collections.Item[types.Params]
 }
 
 // NewBaseViewKeeper returns a new BaseViewKeeper.
 func NewBaseViewKeeper(cdc codec.BinaryCodec, storeService store.KVStoreService, tStoreService store.TransientStoreService, ak types.AccountKeeper, logger log.Logger) BaseViewKeeper {
 	sb := collections.NewSchemaBuilder(storeService)
 	k := BaseViewKeeper{
-		cdc:                cdc,
-		storeService:       storeService,
-		tStoreService:      tStoreService,
-		ak:                 ak,
-		logger:             logger,
-		Supply:             collections.NewMap(sb, types.SupplyKey, "supply", collections.StringKey, sdk.IntValue),
-		HoldersCount:       collections.NewMap(sb, types.HoldersCountKey, "holders_count", collections.StringKey, sdk.Uint64Value),
-		TokensCount:        collections.NewMap(sb, types.TokensCountKey, "tokens_count", collections.StringKey, sdk.Uint64Value),
-		HoldersSortedIndex: collections.NewMap(sb, types.HoldersSortedIndexKey, "holders_sorted_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), codec.BoolValue),
-		OriginChainIndex:   collections.NewMap(sb, types.OriginChainIndexKey, "origin_chain_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), collections.StringValue),
-		ChainHoldersIndex:  collections.NewMap(sb, types.ChainHoldersIndexKey, "chain_holders_index", collections.TripleKeyCodec(collections.Uint64Key, collections.Uint64Key, collections.StringKey), codec.BoolValue),
-		DenomMetadata:      collections.NewMap(sb, types.DenomMetadataPrefix, "denom_metadata", collections.StringKey, codec.CollValue[types.Metadata](cdc)),
-		SendEnabled:        collections.NewMap(sb, types.SendEnabledPrefix, "send_enabled", collections.StringKey, codec.BoolValue), // NOTE: we use a bool value which uses protobuf to retain state backwards compat
-		Balances:           collections.NewIndexedMap(sb, types.BalancesPrefix, "balances", collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey), types.BalanceValueCodec, newBalancesIndexes(sb)),
-		Params:             collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
+		cdc:                       cdc,
+		storeService:              storeService,
+		tStoreService:             tStoreService,
+		ak:                        ak,
+		logger:                    logger,
+		Supply:                    collections.NewMap(sb, types.SupplyKey, "supply", collections.StringKey, sdk.IntValue),
+		HoldersCount:              collections.NewMap(sb, types.HoldersCountKey, "holders_count", collections.StringKey, sdk.Uint64Value),
+		TokensCount:               collections.NewMap(sb, types.TokensCountKey, "tokens_count", collections.StringKey, sdk.Uint64Value),
+		HoldersSortedIndex:        collections.NewMap(sb, types.HoldersSortedIndexKey, "holders_sorted_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), codec.BoolValue),
+		OriginChainIndex:          collections.NewMap(sb, types.OriginChainIndexKey, "origin_chain_index", collections.PairKeyCodec(collections.Uint64Key, collections.StringKey), collections.StringValue),
+		ChainHoldersIndex:         collections.NewMap(sb, types.ChainHoldersIndexKey, "chain_holders_index", collections.TripleKeyCodec(collections.Uint64Key, collections.Uint64Key, collections.StringKey), codec.BoolValue),
+		DenomMetadata:             collections.NewMap(sb, types.DenomMetadataPrefix, "denom_metadata", collections.StringKey, codec.CollValue[types.Metadata](cdc)),
+		DenomMetadataCount:        collections.NewItem(sb, types.DenomMetadataCountKey, "denom_metadata_count", sdk.Uint64Value),
+		ChainIdMetadataCountIndex: collections.NewMap(sb, types.ChainIdMetadataCountIndexKey, "chain_id_metadata_count_index", collections.Uint64Key, sdk.Uint64Value),
+		SendEnabled:               collections.NewMap(sb, types.SendEnabledPrefix, "send_enabled", collections.StringKey, codec.BoolValue), // NOTE: we use a bool value which uses protobuf to retain state backwards compat
+		Balances:                  collections.NewIndexedMap(sb, types.BalancesPrefix, "balances", collections.PairKeyCodec(sdk.AccAddressKey, collections.StringKey), types.BalanceValueCodec, newBalancesIndexes(sb)),
+		Params:                    collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
 	}
 
 	schema, err := sb.Build()

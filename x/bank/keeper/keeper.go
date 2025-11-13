@@ -3,14 +3,17 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/core/store"
 	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
+	"cosmossdk.io/store/prefix"
 
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/runtime"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/types/query"
@@ -55,6 +58,8 @@ type Keeper interface {
 
 	EmitAllTransientBalances(ctx sdk.Context)
 	SafeTransferTreasury(ctx context.Context, addr sdk.AccAddress, amt sdk.Coins) error
+
+	UpdateAllCountIndexes(ctx context.Context)
 
 	types.QueryServer
 }
@@ -362,6 +367,11 @@ func (k BaseKeeper) SetDenomMetaData(ctx context.Context, denomMetaData types.Me
 			}
 		}
 	}
+
+	if !hasOldMetadata {
+		count, _ := k.BaseViewKeeper.DenomMetadataCount.Get(ctx)
+		k.BaseViewKeeper.DenomMetadataCount.Set(ctx, count+1)
+	}
 }
 
 func (k BaseKeeper) setChainMetadataKeyIndex(ctx context.Context, chainMetadata *types.ChainMetadata, denom string) {
@@ -374,6 +384,10 @@ func (k BaseKeeper) setChainMetadataKeyIndex(ctx context.Context, chainMetadata 
 	_ = k.OriginChainIndex.Set(ctx,
 		collections.Join(chainMetadata.ChainId, chainMetadata.ContractAddress),
 		denom)
+
+	// // Update the chain id metadata count index
+	count, _ := k.BaseViewKeeper.ChainIdMetadataCountIndex.Get(ctx, chainMetadata.ChainId)
+	_ = k.BaseViewKeeper.ChainIdMetadataCountIndex.Set(ctx, chainMetadata.ChainId, count+1)
 }
 
 func (k BaseKeeper) removeChainMetadataKeyIndex(ctx context.Context, chainMetadata *types.ChainMetadata) {
@@ -382,6 +396,10 @@ func (k BaseKeeper) removeChainMetadataKeyIndex(ctx context.Context, chainMetada
 	}
 
 	k.OriginChainIndex.Remove(ctx, collections.Join(chainMetadata.ChainId, chainMetadata.ContractAddress))
+
+	// // Update the chain id metadata count index
+	count, _ := k.BaseViewKeeper.ChainIdMetadataCountIndex.Get(ctx, chainMetadata.ChainId)
+	_ = k.BaseViewKeeper.ChainIdMetadataCountIndex.Set(ctx, chainMetadata.ChainId, count-1)
 }
 
 func (k BaseKeeper) GetDenomFromChainIdAndContractAddress(ctx context.Context, chainId uint64, contractAddress string) (string, bool) {
@@ -630,4 +648,49 @@ func (k BaseViewKeeper) IterateTotalSupply(ctx context.Context, cb func(sdk.Coin
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (k BaseKeeper) UpdateAllCountIndexes(ctx context.Context) {
+	// Update the denom metadata count
+	count, _ := k.BaseViewKeeper.DenomMetadataCount.Get(ctx)
+
+	if count != 0 { // If the count is not 0, it means the indexes are already updated
+		return
+	}
+
+	fmt.Println("Bank: Updating all count indexes")
+
+	kvStore := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
+	store := prefix.NewStore(kvStore, types.DenomMetadataPrefix)
+
+	startTime := time.Now()
+
+	metadatas := []types.Metadata{}
+	_, err := query.Paginate(store, &query.PageRequest{
+		Offset:     count,
+		CountTotal: false,
+	}, func(_, value []byte) error {
+		var metadata types.Metadata
+		k.cdc.MustUnmarshal(value, &metadata)
+
+		metadatas = append(metadatas, metadata)
+		return nil
+	})
+	if err != nil {
+		return
+	}
+	for _, metadata := range metadatas {
+		for _, chainMetadata := range metadata.ChainsMetadatas {
+			countOfChainId, _ := k.BaseViewKeeper.ChainIdMetadataCountIndex.Get(ctx, chainMetadata.ChainId)
+			fmt.Println("countOfChainId", countOfChainId)
+			fmt.Println("chainMetadata.ChainId", chainMetadata.ChainId, "chainMetadata.ContractAddress", chainMetadata.ContractAddress, "chainMetadata.Symbol", chainMetadata.Symbol, "chainMetadata.TotalSupply", chainMetadata.TotalSupply)
+			_ = k.BaseViewKeeper.ChainIdMetadataCountIndex.Set(ctx, chainMetadata.ChainId, countOfChainId+1)
+		}
+	}
+
+	fmt.Println("--------------------------------")
+	fmt.Println("count", count)
+	fmt.Println("metadatas", len(metadatas))
+	fmt.Println("time", time.Since(startTime))
+	_ = k.BaseViewKeeper.DenomMetadataCount.Set(ctx, count+uint64(len(metadatas)))
 }

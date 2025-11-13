@@ -249,6 +249,10 @@ func (k BaseKeeper) DenomsMetadata(c context.Context, req *types.QueryDenomsMeta
 	kvStore := runtime.KVStoreAdapter(k.storeService.OpenKVStore(c))
 	store := prefix.NewStore(kvStore, types.DenomMetadataPrefix)
 
+	if req.Pagination.CountTotal { // always force to false (we don't need to count total)
+		req.Pagination.CountTotal = false
+	}
+
 	metadatas := []types.Metadata{}
 	pageRes, err := query.Paginate(store, req.Pagination, func(_, value []byte) error {
 		var metadata types.Metadata
@@ -260,6 +264,10 @@ func (k BaseKeeper) DenomsMetadata(c context.Context, req *types.QueryDenomsMeta
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
+	ctx := sdk.UnwrapSDKContext(c)
+	count, _ := k.BaseViewKeeper.DenomMetadataCount.Get(ctx)
+	pageRes.Total = count
 
 	return &types.QueryDenomsMetadataResponse{
 		Metadatas:  metadatas,
@@ -311,6 +319,10 @@ func (k BaseKeeper) DenomsFullMetadata(c context.Context, req *types.QueryDenoms
 		return nil, status.Errorf(codes.InvalidArgument, "empty request")
 	}
 
+	if req.Pagination.CountTotal {
+		req.Pagination.CountTotal = false
+	}
+
 	metadataList, pageRes, err := query.CollectionPaginate(
 		c,
 		k.HoldersSortedIndex,
@@ -340,6 +352,10 @@ func (k BaseKeeper) DenomsFullMetadata(c context.Context, req *types.QueryDenoms
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
 	}
+
+	ctx := sdk.UnwrapSDKContext(c)
+	count, _ := k.BaseViewKeeper.DenomMetadataCount.Get(ctx)
+	pageRes.Total = count
 
 	return &types.QueryDenomsFullMetadataResponse{
 		Metadatas:  metadataList,
@@ -498,6 +514,10 @@ func (k BaseKeeper) DenomsByChainId(c context.Context, req *types.QueryDenomsByC
 
 	ctx := sdk.UnwrapSDKContext(c)
 
+	if req.Pagination.CountTotal { // always force to false (we don't need to count total)
+		req.Pagination.CountTotal = false
+	}
+
 	// Si l'option de tri par nombre de détenteurs est activée, utiliser l'index optimisé
 	if req.OrderByHoldersCount {
 		// Utiliser ChainHoldersIndex qui est déjà trié par nombre de détenteurs pour chaque chainId
@@ -532,6 +552,10 @@ func (k BaseKeeper) DenomsByChainId(c context.Context, req *types.QueryDenomsByC
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
 		}
+
+		// Update the total count
+		count, _ := k.BaseViewKeeper.ChainIdMetadataCountIndex.Get(ctx, req.ChainId)
+		pageRes.Total = count
 
 		return &types.QueryDenomsByChainIdResponse{
 			Metadatas:  denomsList,
@@ -571,6 +595,10 @@ func (k BaseKeeper) DenomsByChainId(c context.Context, req *types.QueryDenomsByC
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to paginate: %v", err)
 	}
+
+	// Update the total count
+	count, _ := k.BaseViewKeeper.ChainIdMetadataCountIndex.Get(ctx, req.ChainId)
+	pageRes.Total = count
 
 	return &types.QueryDenomsByChainIdResponse{
 		Metadatas:  denomsList,
