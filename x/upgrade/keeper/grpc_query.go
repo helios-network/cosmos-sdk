@@ -32,9 +32,19 @@ func (k Keeper) CurrentPlan(c context.Context, req *types.QueryCurrentPlanReques
 func (k Keeper) AppliedPlan(c context.Context, req *types.QueryAppliedPlanRequest) (*types.QueryAppliedPlanResponse, error) {
 	ctx := sdk.UnwrapSDKContext(c)
 
-	applied, err := k.GetDoneHeight(ctx, req.Name)
+	applied, err := k.GetDoneHeight(ctx, req.Version)
 
 	return &types.QueryAppliedPlanResponse{Height: applied}, err
+}
+
+func (k Keeper) AppliedPlans(c context.Context, req *types.QueryAppliedPlansRequest) (*types.QueryAppliedPlansResponse, error) {
+	ctx := sdk.UnwrapSDKContext(c)
+
+	appliedPlans, err := k.GetAppliedPlans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &types.QueryAppliedPlansResponse{AppliedPlans: appliedPlans}, nil
 }
 
 // UpgradedConsensusState implements the Query/UpgradedConsensusState gRPC method

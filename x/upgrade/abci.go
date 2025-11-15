@@ -24,8 +24,16 @@ import (
 // skipUpgradeHeightArray is a set of block heights for which the upgrade must be skipped
 func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlock, error) {
 	defer telemetry.ModuleMeasureSince(types.ModuleName, telemetry.Now(), telemetry.MetricKeyBeginBlocker)
-
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	logger := k.Logger(ctx)
+
+	trustedHosts := k.GetTrustedHosts() /// EXEMPLE: []string{"https://github.com/helios-network/helios-core/releases/download/"}
+
+	fmt.Println("Trusted hosts:", trustedHosts)
+	if len(trustedHosts) == 0 {
+		logger.Error("trusted hosts are not set, please set the upgrade trusted hosts flag as --upgrade-trust-hosts=")
+		os.Exit(10) // exit code 10 is used to indicate that the node should be stopped and not restarted
+	}
 
 	blockHeight := sdkCtx.HeaderInfo().Height
 	plan, err := k.GetUpgradePlan(ctx)
@@ -41,14 +49,35 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 		}, nil
 	}
 	appVersion := k.GetAppVersion(ctx)
-	logger := k.Logger(ctx)
 
 	planInfo, err := plan.GetPlanInfo()
 	if err != nil {
 		return nil, err
 	}
 
+	if k.IsAlreadyApplied(ctx, plan) {
+		fmt.Println("Plan", planInfo.Version, "is already applied, skipping upgrade")
+		return &sdk.ResponsePreBlock{
+			ConsensusParamsChanged: false,
+		}, nil
+	}
+
 	if !k.VersionIsOlderThan(appVersion, planInfo.Version) {
+
+		isAppliedPlan, err := k.IsAppliedPlan(ctx, planInfo.Version)
+		if err != nil {
+			return nil, err
+		}
+		if !isAppliedPlan {
+			err = k.ApplyUpgrade(ctx, plan)
+			if err != nil {
+				return nil, fmt.Errorf("unable to apply upgrade: %w", err)
+			}
+			fmt.Println("Plan", planInfo.Version, "applied successfully")
+			return &sdk.ResponsePreBlock{
+				ConsensusParamsChanged: false,
+			}, nil
+		}
 		fmt.Println("AppVersion (", appVersion, ") is up to date with the plan version (", planInfo.Version, "), skipping upgrade")
 		return &sdk.ResponsePreBlock{
 			ConsensusParamsChanged: false,
@@ -60,7 +89,7 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 		if !k.VerifyIfTheBinaryHasBeenDownloadedForThePlan(plan) {
 			fmt.Println("Downloading the upgrade binary and preparing it on the storage")
 			// Download the upgrade binary and prepare it on the storage
-			err := k.TryDownloadUpgradeBinary(ctx, plan, []string{"https://github.com/helios-network/helios-core/releases/download/"}, "heliades")
+			err := k.TryDownloadUpgradeBinary(ctx, plan, trustedHosts, "heliades")
 			if err != nil {
 				fmt.Println("Error downloading the upgrade binary", err)
 			}
@@ -102,7 +131,7 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 
 		// stop the node
 		fmt.Println("Stopping the node")
-		os.Exit(42000) // exit code 42000 is used to indicate that the node should be restarted immediately
+		os.Exit(120) // exit code 120 is used to indicate that the node should be stopped and restarted immediately
 		return nil, errors.New(upgradeMsg)
 	}
 	return &sdk.ResponsePreBlock{

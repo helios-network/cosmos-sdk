@@ -125,6 +125,10 @@ func SetChainID(chainID string) func(*BaseApp) {
 	return func(app *BaseApp) { app.chainID = chainID }
 }
 
+func SetUpgradeTrustHosts(upgradeTrustHosts string) func(*BaseApp) {
+	return func(app *BaseApp) { app.upgradeTrustHosts = upgradeTrustHosts }
+}
+
 // SetStoreLoader allows customization of the rootMultiStore initialization.
 func SetStoreLoader(loader StoreLoader) func(*BaseApp) {
 	return func(app *BaseApp) { app.SetStoreLoader(loader) }

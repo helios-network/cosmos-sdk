@@ -53,6 +53,8 @@ type Keeper struct {
 	downgradeVerified  bool                            // tells if we've already sanity checked that this binary version isn't being used against an old state.
 	authority          string                          // the address capable of executing and canceling an upgrade. Usually the gov module account
 	initVersionMap     module.VersionMap               // the module version map at init genesis
+	appVersion         string                          // the current version of the app
+	trustedHosts       []string                        // list of trusted hosts to download the upgrade binary from
 }
 
 // NewKeeper constructs an upgrade Keeper which requires the following arguments:
@@ -61,7 +63,7 @@ type Keeper struct {
 // cdc - the app-wide binary codec
 // homePath - root directory of the application's config
 // vs - the interface implemented by baseapp which allows setting baseapp's protocol version field
-func NewKeeper(skipUpgradeHeights map[int64]bool, storeService corestore.KVStoreService, cdc codec.BinaryCodec, homePath string, vs xp.ProtocolVersionSetter, authority string) *Keeper {
+func NewKeeper(skipUpgradeHeights map[int64]bool, storeService corestore.KVStoreService, cdc codec.BinaryCodec, homePath string, vs xp.ProtocolVersionSetter, authority string, appVersion string, trustedHosts []string) *Keeper {
 	k := &Keeper{
 		homePath:           homePath,
 		skipUpgradeHeights: skipUpgradeHeights,
@@ -70,7 +72,18 @@ func NewKeeper(skipUpgradeHeights map[int64]bool, storeService corestore.KVStore
 		upgradeHandlers:    map[string]types.UpgradeHandler{},
 		versionSetter:      vs,
 		authority:          authority,
+		appVersion:         appVersion,
+		trustedHosts:       trustedHosts,
 	}
+
+	// remove empty strings from trustedHosts
+	newTrustedHosts := make([]string, 0)
+	for _, host := range trustedHosts {
+		if host != "" {
+			newTrustedHosts = append(newTrustedHosts, host)
+		}
+	}
+	k.trustedHosts = newTrustedHosts
 
 	if upgradePlan, err := k.ReadUpgradeInfoFromDisk(); err == nil && upgradePlan.Height > 0 {
 		telemetry.SetGaugeWithLabels([]string{"server", "info"}, 1, []metrics.Label{telemetry.NewLabel("upgrade_height", strconv.FormatInt(upgradePlan.Height, 10))})
@@ -101,40 +114,21 @@ func (k *Keeper) GetInitVersionMap() module.VersionMap {
 	return k.initVersionMap
 }
 
+// SetTrustedHosts sets the list of trusted hosts to download the upgrade binary from
+func (k *Keeper) SetTrustedHosts(trustedHosts []string) {
+	k.trustedHosts = trustedHosts
+}
+
+// GetTrustedHosts gets the list of trusted hosts to download the upgrade binary from
+func (k *Keeper) GetTrustedHosts() []string {
+	return k.trustedHosts
+}
+
 // SetUpgradeHandler sets an UpgradeHandler for the upgrade specified by name. This handler will be called when the upgrade
 // with this name is applied. In order for an upgrade with the given name to proceed, a handler for this upgrade
 // must be set even if it is a no-op function.
 func (k Keeper) SetUpgradeHandler(name string, upgradeHandler types.UpgradeHandler) {
 	k.upgradeHandlers[name] = upgradeHandler
-}
-
-// setProtocolVersion sets the protocol version to state
-func (k Keeper) setProtocolVersion(ctx context.Context, v uint64) error {
-	store := k.storeService.OpenKVStore(ctx)
-	versionBytes := make([]byte, 8)
-	binary.BigEndian.PutUint64(versionBytes, v)
-	return store.Set([]byte{types.ProtocolVersionByte}, versionBytes)
-}
-
-// getProtocolVersion gets the protocol version from state
-func (k Keeper) getProtocolVersion(ctx context.Context) (uint64, error) {
-	store := k.storeService.OpenKVStore(ctx)
-	ok, err := store.Has([]byte{types.ProtocolVersionByte})
-	if err != nil {
-		return 0, err
-	}
-
-	if ok {
-		pvBytes, err := store.Get([]byte{types.ProtocolVersionByte})
-		if err != nil {
-			return 0, err
-		}
-
-		protocolVersion := binary.BigEndian.Uint64(pvBytes)
-		return protocolVersion, nil
-	}
-	// default value
-	return 0, nil
 }
 
 // SetModuleVersionMap saves a given version map to state
@@ -241,6 +235,27 @@ func (k Keeper) ScheduleUpgrade(ctx context.Context, plan types.Plan) error {
 	if err := plan.ValidateBasic(); err != nil {
 		return err
 	}
+	planInfo, err := plan.GetPlanInfo()
+	if err != nil {
+		return err
+	}
+
+	if planInfo.Version == "" {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "version cannot be empty")
+	}
+
+	if planInfo.Hash == "" {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "hash cannot be empty")
+	}
+
+	if planInfo.Size <= 0 {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "size must be greater than 0")
+	}
+
+	lastCompletedUpgrade, _, err := k.GetLastCompletedUpgradeVersion(ctx)
+	if err == nil && lastCompletedUpgrade != "" && !k.VersionIsOlderThan(lastCompletedUpgrade, planInfo.Version) {
+		return errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "last completed upgrade version is not older than the plan version")
+	}
 
 	// NOTE: allow for the possibility of chains to schedule upgrades in begin block of the same block
 	// as a strategy for emergency hard fork recoveries
@@ -334,8 +349,8 @@ func (k Keeper) GetUpgradedConsensusState(ctx context.Context, lastHeight int64)
 	return bz, nil
 }
 
-// GetLastCompletedUpgrade returns the last applied upgrade name and height.
-func (k Keeper) GetLastCompletedUpgrade(ctx context.Context) (string, int64, error) {
+// GetLastCompletedUpgradeVersion returns the last applied upgrade version.
+func (k Keeper) GetLastCompletedUpgradeVersion(ctx context.Context) (string, int64, error) {
 	store := k.storeService.OpenKVStore(ctx)
 	prefix := []byte{types.DoneByte}
 	it, err := store.ReverseIterator(prefix, storetypes.PrefixEndBytes(prefix))
@@ -345,14 +360,14 @@ func (k Keeper) GetLastCompletedUpgrade(ctx context.Context) (string, int64, err
 	defer it.Close()
 
 	if it.Valid() {
-		name, height := parseDoneKey(it.Key())
-		return name, height, nil
+		version, height := parseDoneKey(it.Key())
+		return version, height, nil
 	}
 
 	return "", 0, nil
 }
 
-// parseDoneKey - split upgrade name and height from the done key
+// parseDoneKey - split upgrade version and height from the done key
 func parseDoneKey(key []byte) (string, int64) {
 	// 1 byte for the DoneByte + 8 bytes height + at least 1 byte for the name
 	kv.AssertKeyAtLeastLength(key, 10)
@@ -360,17 +375,28 @@ func parseDoneKey(key []byte) (string, int64) {
 	return string(key[9:]), int64(height)
 }
 
-// encodeDoneKey - concatenate DoneByte, height and upgrade name to form the done key
-func encodeDoneKey(name string, height int64) []byte {
-	key := make([]byte, 9+len(name)) // 9 = donebyte + uint64 len
+// encodeDoneKey - concatenate DoneByte, height and upgrade version to form the done key
+func encodeDoneKey(version string, height int64) []byte {
+	key := make([]byte, 9+len(version)) // 9 = donebyte + uint64 len
 	key[0] = types.DoneByte
 	binary.BigEndian.PutUint64(key[1:9], uint64(height))
-	copy(key[9:], name)
+	copy(key[9:], version)
 	return key
 }
 
-// GetDoneHeight returns the height at which the given upgrade was executed
-func (k Keeper) GetDoneHeight(ctx context.Context, name string) (int64, error) {
+// IsAlreadyApplied returns true if the given upgrade version has already been applied
+func (k Keeper) IsAlreadyApplied(ctx context.Context, plan types.Plan) bool {
+	store := k.storeService.OpenKVStore(ctx)
+	planInfo, err := plan.GetPlanInfo()
+	if err != nil {
+		return false
+	}
+	_, err = store.Get(encodeDoneKey(planInfo.Version, plan.Height))
+	return err == nil
+}
+
+// GetDoneHeight returns the height at which the given upgrade version was executed
+func (k Keeper) GetDoneHeight(ctx context.Context, version string) (int64, error) {
 	store := k.storeService.OpenKVStore(ctx)
 	prefix := []byte{types.DoneByte}
 	it, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
@@ -380,13 +406,50 @@ func (k Keeper) GetDoneHeight(ctx context.Context, name string) (int64, error) {
 	defer it.Close()
 
 	for ; it.Valid(); it.Next() {
-		upgradeName, height := parseDoneKey(it.Key())
-		if upgradeName == name {
+		upgradeVersion, height := parseDoneKey(it.Key())
+		if upgradeVersion == version {
 			return height, nil
 		}
 	}
 
 	return 0, nil
+}
+
+func (k Keeper) GetAppliedPlans(ctx context.Context) ([]*types.Plan, error) {
+	store := k.storeService.OpenKVStore(ctx)
+	prefix := []byte{types.DoneByte}
+	it, err := store.ReverseIterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return nil, err
+	}
+	defer it.Close()
+	appliedPlans := make([]*types.Plan, 0)
+	for ; it.Valid(); it.Next() {
+		var plan types.Plan
+		err = k.cdc.Unmarshal(it.Value(), &plan)
+		if err != nil {
+			return nil, err
+		}
+		appliedPlans = append(appliedPlans, &plan)
+	}
+	return appliedPlans, nil
+}
+
+func (k Keeper) IsAppliedPlan(ctx context.Context, version string) (bool, error) {
+	store := k.storeService.OpenKVStore(ctx)
+	prefix := []byte{types.DoneByte}
+	it, err := store.ReverseIterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return false, err
+	}
+	defer it.Close()
+	for ; it.Valid(); it.Next() {
+		upgradeVersion, _ := parseDoneKey(it.Key())
+		if upgradeVersion == version {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ClearIBCState clears any planned IBC state
@@ -449,11 +512,19 @@ func (k Keeper) GetUpgradePlan(ctx context.Context) (plan types.Plan, err error)
 	return plan, err
 }
 
-// setDone marks this upgrade name as being done so the name can't be reused accidentally
-func (k Keeper) setDone(ctx context.Context, name string) error {
+// setDone marks this upgrade version as being done so the version can't be reused accidentally
+func (k Keeper) setDone(ctx context.Context, plan types.Plan) error {
 	store := k.storeService.OpenKVStore(ctx)
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	return store.Set(encodeDoneKey(name, sdkCtx.HeaderInfo().Height), []byte{1})
+	bz, err := k.cdc.Marshal(&plan)
+	if err != nil {
+		return err
+	}
+	planInfo, err := plan.GetPlanInfo()
+	if err != nil {
+		return err
+	}
+	return store.Set(encodeDoneKey(planInfo.Version, sdkCtx.HeaderInfo().Height), bz)
 }
 
 // HasHandler returns true iff there is a handler registered for this name
@@ -479,7 +550,7 @@ func (k Keeper) ApplyUpgrade(ctx context.Context, plan types.Plan) error {
 		return fmt.Errorf("failed to move upgrade binary to heliades binary path: %w", err)
 	}
 	fmt.Println("Upgrade binary moved to", heliadesPath)
-	return k.setDone(ctx, plan.Name)
+	return k.setDone(ctx, plan)
 }
 
 // IsSkipHeight checks if the given height is part of skipUpgradeHeights
@@ -746,19 +817,7 @@ func (k Keeper) GetHeliadesBinaryPath() string {
 }
 
 func (k Keeper) GetAppVersion(ctx context.Context) string {
-	heliadesPath := k.GetHeliadesBinaryPath()
-	output, err := exec.Command(heliadesPath, "version").Output()
-	if err != nil {
-		return ""
-	}
-	var version struct {
-		Version string `json:"version"`
-	}
-	err = json.Unmarshal(output, &version)
-	if err != nil {
-		return ""
-	}
-	return version.Version
+	return k.appVersion
 }
 
 // ParseVersion enlève le préfixe 'v' si présent

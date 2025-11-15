@@ -119,6 +119,9 @@ const (
 	KeyNewValAddr            = "new-validator-addr"
 	KeyUserPubKey            = "user-pub-key"
 	KeyTriggerTestnetUpgrade = "trigger-testnet-upgrade"
+
+	// upgrade flags
+	FlagUpgradeTrustHosts = "upgrade-trust-hosts"
 )
 
 // StartCmdOptions defines options that can be customized in `StartCmdWithOptions`,
@@ -1014,6 +1017,7 @@ func addStartNodeFlags(cmd *cobra.Command, opts StartCmdOptions) {
 	cmd.Flags().Int(FlagMempoolMaxTxs, mempool.DefaultMaxTx, "Sets MaxTx value for the app-side mempool")
 	cmd.Flags().Duration(FlagShutdownGrace, 0*time.Second, "On Shutdown, duration to wait for resource clean up")
 	cmd.Flags().Bool(FlagDumpCommitDebugExecutionTrace, false, "Dump commit debug storage commit execution trace")
+	cmd.Flags().String(FlagUpgradeTrustHosts, "", "Upgrade trust hosts something like 'https://host1.com/path1,https://host2.com/path2'")
 
 	// Backup system flags
 	cmd.Flags().Bool(FlagBackupEnable, false, "Enable automatic blockchain backup system")

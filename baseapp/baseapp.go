@@ -195,6 +195,8 @@ type BaseApp struct {
 
 	chainID string
 
+	upgradeTrustHosts string
+
 	cdc codec.Codec
 
 	// optimisticExec contains the context required for Optimistic Execution,
@@ -456,6 +458,11 @@ func (app *BaseApp) LastBlockHeight() int64 {
 // ChainID returns the chainID of the app.
 func (app *BaseApp) ChainID() string {
 	return app.chainID
+}
+
+// UpgradeTrustHosts returns the upgrade trust hosts of the app. something like "https://host1.com/path1,https://host2.com/path2"
+func (app *BaseApp) UpgradeTrustHosts() string {
+	return app.upgradeTrustHosts
 }
 
 // AnteHandler returns the AnteHandler of the app.
