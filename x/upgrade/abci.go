@@ -63,13 +63,11 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 	}
 
 	if !k.VersionIsOlderThan(appVersion, planInfo.Version) {
+		fmt.Println("AppVersion (", appVersion, ") is up to date with the plan version (", planInfo.Version, "), skipping upgrade")
+		isAppliedPlan := k.IsAlreadyApplied(ctx, plan)
 
-		isAppliedPlan, err := k.IsAppliedPlan(ctx, planInfo.Version)
-		if err != nil {
-			return nil, err
-		}
-		if !isAppliedPlan {
-			err = k.ApplyUpgrade(ctx, plan)
+		if !isAppliedPlan && planInfo.Version == appVersion {
+			err = k.SetDone(ctx, plan)
 			if err != nil {
 				return nil, fmt.Errorf("unable to apply upgrade: %w", err)
 			}
@@ -78,10 +76,6 @@ func PreBlocker(ctx context.Context, k *keeper.Keeper) (appmodule.ResponsePreBlo
 				ConsensusParamsChanged: false,
 			}, nil
 		}
-		fmt.Println("AppVersion (", appVersion, ") is up to date with the plan version (", planInfo.Version, "), skipping upgrade")
-		return &sdk.ResponsePreBlock{
-			ConsensusParamsChanged: false,
-		}, nil
 	}
 
 	// skip if current version is the version of the plan and the binary is not downloaded

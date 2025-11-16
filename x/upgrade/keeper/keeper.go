@@ -391,8 +391,8 @@ func (k Keeper) IsAlreadyApplied(ctx context.Context, plan types.Plan) bool {
 	if err != nil {
 		return false
 	}
-	_, err = store.Get(encodeDoneKey(planInfo.Version, plan.Height))
-	return err == nil
+	value, err := store.Get(encodeDoneKey(planInfo.Version, plan.Height))
+	return err == nil && value != nil
 }
 
 // GetDoneHeight returns the height at which the given upgrade version was executed
@@ -433,23 +433,6 @@ func (k Keeper) GetAppliedPlans(ctx context.Context) ([]*types.Plan, error) {
 		appliedPlans = append(appliedPlans, &plan)
 	}
 	return appliedPlans, nil
-}
-
-func (k Keeper) IsAppliedPlan(ctx context.Context, version string) (bool, error) {
-	store := k.storeService.OpenKVStore(ctx)
-	prefix := []byte{types.DoneByte}
-	it, err := store.ReverseIterator(prefix, storetypes.PrefixEndBytes(prefix))
-	if err != nil {
-		return false, err
-	}
-	defer it.Close()
-	for ; it.Valid(); it.Next() {
-		upgradeVersion, _ := parseDoneKey(it.Key())
-		if upgradeVersion == version {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // ClearIBCState clears any planned IBC state
@@ -513,9 +496,8 @@ func (k Keeper) GetUpgradePlan(ctx context.Context) (plan types.Plan, err error)
 }
 
 // setDone marks this upgrade version as being done so the version can't be reused accidentally
-func (k Keeper) setDone(ctx context.Context, plan types.Plan) error {
+func (k Keeper) SetDone(ctx context.Context, plan types.Plan) error {
 	store := k.storeService.OpenKVStore(ctx)
-	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	bz, err := k.cdc.Marshal(&plan)
 	if err != nil {
 		return err
@@ -524,7 +506,7 @@ func (k Keeper) setDone(ctx context.Context, plan types.Plan) error {
 	if err != nil {
 		return err
 	}
-	return store.Set(encodeDoneKey(planInfo.Version, sdkCtx.HeaderInfo().Height), bz)
+	return store.Set(encodeDoneKey(planInfo.Version, plan.Height), bz)
 }
 
 // HasHandler returns true iff there is a handler registered for this name
@@ -550,7 +532,7 @@ func (k Keeper) ApplyUpgrade(ctx context.Context, plan types.Plan) error {
 		return fmt.Errorf("failed to move upgrade binary to heliades binary path: %w", err)
 	}
 	fmt.Println("Upgrade binary moved to", heliadesPath)
-	return k.setDone(ctx, plan)
+	return k.SetDone(ctx, plan)
 }
 
 // IsSkipHeight checks if the given height is part of skipUpgradeHeights
