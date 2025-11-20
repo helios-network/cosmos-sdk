@@ -24,6 +24,7 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 	registry.RegisterImplementations(
 		(*sdk.Msg)(nil),
 		&MsgUpdateParams{},
+		&MsgUpdateInflationRate{},
 	)
 
 	// Register UpdateInflationProposal as a governance proposal type

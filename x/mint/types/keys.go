@@ -18,6 +18,12 @@ const (
 	// StoreKey is the default store key for mint
 	StoreKey = ModuleName
 
+	// RouterKey is the message route for the mint module
+	RouterKey = ModuleName
+
+	// ModularRouterKey is the message route for the mint module in the modular governance system
+	ModularRouterKey = "mintmodular"
+
 	ProposalTypeUpdateInflationRate = "UpdateInflationRate"
 	EventTypeInflationRateUpdate    = "inflation_rate_update"
 	AttributeKeyPhase               = "phase"

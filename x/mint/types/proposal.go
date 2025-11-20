@@ -7,10 +7,6 @@ import (
 	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 )
 
-const (
-	RouterKey = ModuleName // This should be your module name
-)
-
 // ProposalRoute returns the routing key for this proposal
 func (p *UpdateInflationProposal) ProposalRoute() string { return RouterKey }
 
