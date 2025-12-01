@@ -72,6 +72,9 @@ func (k Querier) ValidatorsCount(ctx context.Context, req *types.QueryValidators
 
 	count := uint64(0)
 	err := k.IterateValidators(ctx, func(index int64, validator types.ValidatorI) (stop bool) {
+		if req.Status != "" && !strings.EqualFold(validator.GetStatus().String(), req.Status) {
+			return false
+		}
 		count++
 		return false
 	})

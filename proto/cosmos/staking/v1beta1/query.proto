@@ -327,7 +327,10 @@ message QueryValidatorsResponse {
 }
 
 // QueryValidatorsCountRequest is request type for Query/ValidatorsCount RPC method.
-message QueryValidatorsCountRequest {}
+message QueryValidatorsCountRequest {
+  // status enables to query for validators matching a given status.
+  string status = 1;
+}
 
 // QueryValidatorsCountResponse is response type for Query/ValidatorsCount RPC method.
 message QueryValidatorsCountResponse {
