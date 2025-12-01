@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -36,33 +37,91 @@ func (k Querier) Validators(ctx context.Context, req *types.QueryValidatorsReque
 		return nil, status.Error(codes.InvalidArgument, "empty request")
 	}
 
-	// validate the provided status, return all the validators if the status is empty
+	// Validate the provided status, return all the validators if the status is empty
 	if req.Status != "" && !(req.Status == types.Bonded.String() || req.Status == types.Unbonded.String() || req.Status == types.Unbonding.String()) {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid validator status %s", req.Status)
 	}
 
-	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
-	valStore := prefix.NewStore(store, types.ValidatorsKey)
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	store := k.Keeper.storeService.OpenKVStore(sdkCtx)
+	valStore := prefix.NewStore(runtime.KVStoreAdapter(store), types.ValidatorsKey)
 
-	validators, pageRes, err := query.GenericFilteredPaginate(k.cdc, valStore, req.Pagination, func(key []byte, val *types.Validator) (*types.Validator, error) {
-		if req.Status != "" && !strings.EqualFold(val.GetStatus().String(), req.Status) {
-			return nil, nil
+	var allValidators []types.Validator
+	var pageRes *query.PageResponse
+
+	if req.Pagination == nil {
+		return nil, status.Error(codes.InvalidArgument, "pagination is required")
+	}
+	if req.Pagination.CountTotal {
+		req.Pagination.CountTotal = false
+	}
+
+	if req.Status != "" {
+		// If a specific status is requested, use GenericFilteredPaginate directly
+		queriedValidators, pRes, err := query.GenericFilteredPaginate(k.cdc, valStore, req.Pagination, func(key []byte, val *types.Validator) (*types.Validator, error) {
+			if !strings.EqualFold(val.GetStatus().String(), req.Status) {
+				return nil, nil
+			}
+			return val, nil
+		}, func() *types.Validator {
+			return &types.Validator{}
+		})
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		for _, val := range queriedValidators {
+			allValidators = append(allValidators, *val)
+		}
+		pageRes = pRes
+	} else {
+		iter := valStore.Iterator(nil, nil)
+		defer iter.Close()
+
+		var bonded, unbonding, unbonded, heliosBetaMainnet []types.Validator
+
+		for ; iter.Valid(); iter.Next() {
+			var v types.Validator
+			if err := k.cdc.Unmarshal(iter.Value(), &v); err != nil {
+				return nil, err
+			}
+
+			valAddr, _ := sdk.ValAddressFromBech32(v.OperatorAddress)
+			validatorCosmosAddress := sdk.AccAddress(valAddr.Bytes())
+
+			if slices.Contains(types.HeliosBetaMainnetWallets, validatorCosmosAddress.String()) {
+				heliosBetaMainnet = append(heliosBetaMainnet, v)
+				continue
+			}
+
+			switch v.GetStatus() {
+			case types.Bonded:
+				bonded = append(bonded, v)
+			case types.Unbonding:
+				unbonding = append(unbonding, v)
+			case types.Unbonded:
+				unbonded = append(unbonded, v)
+			}
+
+			// EARLY STOP POSSIBLE
+			if uint64(len(bonded)) >= req.Pagination.Limit {
+				break
+			}
 		}
 
-		return val, nil
-	}, func() *types.Validator {
-		return &types.Validator{}
-	})
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		allValidators = append(append(append(heliosBetaMainnet, bonded...), unbonding...), unbonded...)
+		// slice the allValidators to the limit
+		if len(allValidators) > int(req.Pagination.Offset+req.Pagination.Limit) {
+			allValidators = allValidators[req.Pagination.Offset : req.Pagination.Offset+req.Pagination.Limit]
+		} else if len(allValidators) > int(req.Pagination.Offset) {
+			allValidators = allValidators[req.Pagination.Offset:]
+		} else {
+			allValidators = []types.Validator{}
+		}
+		// Construct PageResponse
+		pageRes = &query.PageResponse{Total: 0}
 	}
 
-	vals := types.Validators{}
-	for _, val := range validators {
-		vals.Validators = append(vals.Validators, *val)
-	}
-
-	return &types.QueryValidatorsResponse{Validators: vals.Validators, Pagination: pageRes}, nil
+	return &types.QueryValidatorsResponse{Validators: allValidators, Pagination: pageRes}, nil
 }
 
 func (k Querier) ValidatorsCount(ctx context.Context, req *types.QueryValidatorsCountRequest) (*types.QueryValidatorsCountResponse, error) {
