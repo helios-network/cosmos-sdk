@@ -23,6 +23,11 @@ service Query {
     option (google.api.http).get               = "/cosmos/staking/v1beta1/validators";
   }
 
+  rpc ValidatorsCount(QueryValidatorsCountRequest) returns (QueryValidatorsCountResponse) {
+    option (cosmos.query.v1.module_query_safe) = true;
+    option (google.api.http).get               = "/cosmos/staking/v1beta1/validators/count";
+  }
+
   // Validator queries validator info for given validator address.
   rpc Validator(QueryValidatorRequest) returns (QueryValidatorResponse) {
     option (cosmos.query.v1.module_query_safe) = true;
@@ -319,6 +324,15 @@ message QueryValidatorsResponse {
 
   // pagination defines the pagination in the response.
   cosmos.base.query.v1beta1.PageResponse pagination = 2;
+}
+
+// QueryValidatorsCountRequest is request type for Query/ValidatorsCount RPC method.
+message QueryValidatorsCountRequest {}
+
+// QueryValidatorsCountResponse is response type for Query/ValidatorsCount RPC method.
+message QueryValidatorsCountResponse {
+  // count contains the total number of validators.
+  uint64 count = 1;
 }
 
 // QueryValidatorRequest is response type for the Query/Validator RPC method

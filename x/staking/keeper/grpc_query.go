@@ -65,6 +65,23 @@ func (k Querier) Validators(ctx context.Context, req *types.QueryValidatorsReque
 	return &types.QueryValidatorsResponse{Validators: vals.Validators, Pagination: pageRes}, nil
 }
 
+func (k Querier) ValidatorsCount(ctx context.Context, req *types.QueryValidatorsCountRequest) (*types.QueryValidatorsCountResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "empty request")
+	}
+
+	count := uint64(0)
+	err := k.IterateValidators(ctx, func(index int64, validator types.ValidatorI) (stop bool) {
+		count++
+		return false
+	})
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &types.QueryValidatorsCountResponse{Count: count}, nil
+}
+
 func (k Querier) ShareRepartitionMap(ctx context.Context, req *types.QueryShareRepartitionMapRequest) (*types.QueryShareRepartitionMapResponse, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	currentHeight := sdkCtx.BlockHeight()
